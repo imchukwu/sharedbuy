@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
@@ -24,16 +25,20 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// 1. Database Connection
+	// 1. Database Connection (with automatic fallback to dummy data mode)
+	var sqlDB *sql.DB
 	dbConn, err := repository.Connect(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("Fatal: Database connection failed: %v", err)
+		log.Printf("⚠️  PostgreSQL connection unavailable: %v", err)
+		log.Println("🚀 Starting backend in IN-MEMORY DUMMY DATA mode for review (all mock units & APIs active).")
+	} else {
+		sqlDB = dbConn.SQL
+		defer dbConn.SQL.Close()
 	}
-	defer dbConn.SQL.Close()
 
 	// 2. Repositories
-	userRepo := repository.NewUserRepository(dbConn.SQL)
-	unitRepo := repository.NewUnitRepository(dbConn.SQL)
+	userRepo := repository.NewUserRepository(sqlDB)
+	unitRepo := repository.NewUnitRepository(sqlDB)
 
 	// 3. Services
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)

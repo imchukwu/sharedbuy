@@ -5,17 +5,34 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 
 	"sharedbuy-backend/internal/domain"
 )
 
 type UnitRepository struct {
-	db *sql.DB
+	db           *sql.DB
+	mockUnits    []domain.Unit
+	mockAreas    []domain.Area
+	mockProducts []domain.Product
+	mockMembers  map[string][]domain.UnitMember
+	mu           sync.RWMutex
 }
 
 func NewUnitRepository(db *sql.DB) *UnitRepository {
-	return &UnitRepository{db: db}
+	repo := &UnitRepository{
+		db:           db,
+		mockUnits:    getMockUnits(),
+		mockAreas:    defaultAreas,
+		mockProducts: defaultProducts,
+		mockMembers:  getMockMembers(),
+	}
+	for i := range repo.mockUnits {
+		repo.calculatePricingBreakdown(&repo.mockUnits[i])
+	}
+	return repo
 }
 
 type UnitFilter struct {
@@ -26,6 +43,41 @@ type UnitFilter struct {
 }
 
 func (r *UnitRepository) ListUnits(ctx context.Context, filter UnitFilter) ([]domain.Unit, error) {
+	if r.db == nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+
+		var result []domain.Unit
+		for _, u := range r.mockUnits {
+			if matchesFilter(u, filter) {
+				unitCopy := u
+				r.calculatePricingBreakdown(&unitCopy)
+				result = append(result, unitCopy)
+			}
+		}
+
+		switch filter.Sort {
+		case "almost_full":
+			sort.Slice(result, func(i, j int) bool {
+				remI := result[i].MaxMembers - result[i].CurrentMembersCount
+				remJ := result[j].MaxMembers - result[j].CurrentMembersCount
+				if remI != remJ {
+					return remI < remJ
+				}
+				return result[i].PaymentDeadline.Before(result[j].PaymentDeadline)
+			})
+		case "ending_soon":
+			sort.Slice(result, func(i, j int) bool {
+				return result[i].PaymentDeadline.Before(result[j].PaymentDeadline)
+			})
+		default:
+			sort.Slice(result, func(i, j int) bool {
+				return result[i].CreatedAt.After(result[j].CreatedAt)
+			})
+		}
+
+		return result, nil
+	}
 	baseQuery := `
 		SELECT 
 			u.id, u.product_id, p.name as product_name, p.category as product_category,
@@ -116,6 +168,19 @@ func (r *UnitRepository) ListUnits(ctx context.Context, filter UnitFilter) ([]do
 }
 
 func (r *UnitRepository) GetUnitByID(ctx context.Context, id string) (*domain.Unit, error) {
+	if r.db == nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		for _, u := range r.mockUnits {
+			if u.ID == id {
+				unitCopy := u
+				r.calculatePricingBreakdown(&unitCopy)
+				return &unitCopy, nil
+			}
+		}
+		return nil, nil
+	}
+
 	query := `
 		SELECT 
 			u.id, u.product_id, p.name as product_name, p.category as product_category,
@@ -188,6 +253,15 @@ func (r *UnitRepository) calculatePricingBreakdown(u *domain.Unit) {
 }
 
 func (r *UnitRepository) GetUnitMembers(ctx context.Context, unitID string) ([]domain.UnitMember, error) {
+	if r.db == nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		if members, ok := r.mockMembers[unitID]; ok {
+			return members, nil
+		}
+		return []domain.UnitMember{}, nil
+	}
+
 	query := `
 		SELECT um.id, um.unit_id, um.user_id, u.full_name as user_name, u.phone as user_phone,
 		       um.shares_count, um.amount_paid_kobo, um.payment_status, um.collection_status,
@@ -220,6 +294,12 @@ func (r *UnitRepository) GetUnitMembers(ctx context.Context, unitID string) ([]d
 }
 
 func (r *UnitRepository) GetAreas(ctx context.Context) ([]domain.Area, error) {
+	if r.db == nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		return r.mockAreas, nil
+	}
+
 	rows, err := r.db.QueryContext(ctx, "SELECT id, name, city, state, is_active, created_at FROM areas WHERE is_active = TRUE ORDER BY name ASC")
 	if err != nil {
 		return nil, err
@@ -238,6 +318,12 @@ func (r *UnitRepository) GetAreas(ctx context.Context) ([]domain.Area, error) {
 }
 
 func (r *UnitRepository) GetProducts(ctx context.Context) ([]domain.Product, error) {
+	if r.db == nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		return r.mockProducts, nil
+	}
+
 	rows, err := r.db.QueryContext(ctx, "SELECT id, name, category, image_url, description, pack_size, unit_of_share, shares_per_pack, is_active, created_at FROM products WHERE is_active = TRUE ORDER BY name ASC")
 	if err != nil {
 		return nil, err
