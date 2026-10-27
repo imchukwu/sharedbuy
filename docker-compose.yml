@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: sharedbuy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sharedbuy
+      POSTGRES_PASSWORD: sharedbuy_password
+      POSTGRES_DB: sharedbuy
+    ports:
+      - "5434:5432"
+    volumes:
+      - sharedbuy_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sharedbuy -d sharedbuy"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  sharedbuy_pgdata:
