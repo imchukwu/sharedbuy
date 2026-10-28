@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, UserCheck, Users, ChevronDown, Check } from 'lucide-react';
+import { ShieldCheck, UserCheck, Users, ChevronDown, Check, Truck } from 'lucide-react';
 
 export const RoleSwitcher: React.FC = () => {
   const { user, loginAsDemoRole, logout } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
 
-  const handleRoleSelect = async (role: 'MEMBER' | 'UNIT_MANAGER' | 'ADMIN', targetPath: string) => {
+  const handleRoleSelect = async (role: 'MEMBER' | 'UNIT_MANAGER' | 'DISTRIBUTOR' | 'ADMIN', targetPath: string) => {
     await loginAsDemoRole(role);
     setIsOpen(false);
     navigate(targetPath);
@@ -18,6 +18,7 @@ export const RoleSwitcher: React.FC = () => {
     if (!user) return 'Guest';
     if (user.role === 'ADMIN') return 'Admin (Ops)';
     if (user.role === 'UNIT_MANAGER') return 'Unit Manager';
+    if (user.role === 'DISTRIBUTOR') return 'Distributor';
     return 'Member';
   };
 
@@ -83,6 +84,25 @@ export const RoleSwitcher: React.FC = () => {
                   </div>
                 </div>
                 {user?.role === 'UNIT_MANAGER' && <Check size={14} className="text-emerald-600" />}
+              </button>
+
+              {/* Distributor Option */}
+              <button
+                onClick={() => handleRoleSelect('DISTRIBUTOR', '/distributor')}
+                className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center justify-between hover:bg-emerald-50 transition-colors ${
+                  user?.role === 'DISTRIBUTOR' ? 'bg-emerald-50/70 font-semibold text-emerald-900' : 'text-gray-700'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-800">
+                    <Truck size={14} />
+                  </div>
+                  <div>
+                    <div className="font-medium text-gray-900">Distributor Portal</div>
+                    <div className="text-[11px] text-gray-500">Alhaji Dahiru (+2348055556666)</div>
+                  </div>
+                </div>
+                {user?.role === 'DISTRIBUTOR' && <Check size={14} className="text-emerald-600" />}
               </button>
 
               {/* Admin Option */}

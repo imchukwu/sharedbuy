@@ -8,6 +8,7 @@ import (
 const (
 	RoleMember      = "MEMBER"
 	RoleUnitManager = "UNIT_MANAGER"
+	RoleDistributor = "DISTRIBUTOR"
 	RoleAdmin       = "ADMIN"
 )
 
@@ -124,6 +125,49 @@ type SupplierQuote struct {
 	ValidUntil       time.Time `json:"valid_until"`
 	Notes            string    `json:"notes"`
 	CreatedAt        time.Time `json:"created_at"`
+}
+
+type DistributorCommodity struct {
+	ID                string    `json:"id"`
+	DistributorID     string    `json:"distributor_id"`
+	DistributorName   string    `json:"distributor_name"`
+	DistributorPhone  string    `json:"distributor_phone"`
+	ProductID         string    `json:"product_id"`
+	ProductName       string    `json:"product_name"`
+	Category          string    `json:"category"`
+	PackSize          string    `json:"pack_size"`
+	PricePerPackKobo  int64     `json:"price_per_pack_kobo"`
+	DeliveryFeeKobo   int64     `json:"delivery_fee_kobo"`
+	MinOrderPacks     int       `json:"min_order_packs"`
+	AvailablePacks    int       `json:"available_packs"`
+	WarehouseLocation string    `json:"warehouse_location"`
+	Status            string    `json:"status"` // ACTIVE, OUT_OF_STOCK
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+type PurchaseOrder struct {
+	ID                   string     `json:"id"`
+	OrderNumber          string     `json:"order_number"` // e.g. "PO-PIWOYI-2026-001"
+	DistributorID        string     `json:"distributor_id"`
+	DistributorName      string     `json:"distributor_name"`
+	DistributorPhone     string     `json:"distributor_phone"`
+	CreatedByAdminID     string     `json:"created_by_admin_id"`
+	DestinationArea      string     `json:"destination_area"` // "Piwoyi District Hub, Abuja"
+	DestinationLandmarks []string   `json:"destination_landmarks"`
+	TotalPacks           int        `json:"total_packs"`
+	TotalGoodsCostKobo   int64      `json:"total_goods_cost_kobo"`
+	TotalDeliveryFeeKobo int64      `json:"total_delivery_fee_kobo"`
+	TotalAmountKobo      int64      `json:"total_amount_kobo"`
+	Status               string     `json:"status"` // PENDING, CONFIRMED, DISPATCHED, DELIVERED, CANCELLED
+	AssociatedUnitIDs    []string   `json:"associated_unit_ids"`
+	DriverName           *string    `json:"driver_name,omitempty"`
+	DriverPhone          *string    `json:"driver_phone,omitempty"`
+	VehiclePlate         *string    `json:"vehicle_plate,omitempty"`
+	WaybillNumber        *string    `json:"waybill_number,omitempty"`
+	Notes                string     `json:"notes"`
+	OrderedAt            time.Time  `json:"ordered_at"`
+	DispatchedAt         *time.Time `json:"dispatched_at,omitempty"`
+	DeliveredAt          *time.Time `json:"delivered_at,omitempty"`
 }
 
 type Unit struct {

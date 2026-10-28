@@ -40,6 +40,7 @@ func main() {
 	userRepo := repository.NewUserRepository(sqlDB)
 	unitRepo := repository.NewUnitRepository(sqlDB)
 	walletRepo := repository.NewWalletRepository(sqlDB, userRepo)
+	distRepo := repository.NewDistributorRepository(sqlDB)
 
 	// 3. Services
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
@@ -54,6 +55,7 @@ func main() {
 	unitHandler := handler.NewUnitHandler(unitRepo, userRepo, lifecycleService)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
 	walletHandler := handler.NewWalletHandler(walletService)
+	distHandler := handler.NewDistributorHandler(distRepo, unitRepo)
 
 	// 5. Router Setup
 	r := chi.NewRouter()
@@ -152,10 +154,26 @@ func main() {
 			})
 		})
 
-		// 3. Admin Portal API
+		// 3. Distributor Wholesale Portal API
+		api.Route("/distributor", func(dist chi.Router) {
+			dist.Get("/commodities", distHandler.ListCommodities)
+			dist.Group(func(authed chi.Router) {
+				authed.Use(middleware.RequireAuth)
+				authed.Use(middleware.RequireRole(domain.RoleDistributor, domain.RoleAdmin))
+				authed.Post("/commodities", distHandler.CreateCommodity)
+				authed.Put("/commodities/{id}", distHandler.UpdateCommodity)
+				authed.Get("/orders", distHandler.ListOrders)
+				authed.Post("/orders/{id}/dispatch", distHandler.DispatchOrder)
+				authed.Post("/orders/{id}/delivered", distHandler.MarkDelivered)
+			})
+		})
+
+		// 4. Admin Portal API
 		api.Route("/admin", func(adm chi.Router) {
 			adm.Use(middleware.RequireAuth)
 			adm.Use(middleware.RequireRole(domain.RoleAdmin))
+			adm.Get("/orders", distHandler.ListOrders)
+			adm.Post("/orders", distHandler.CreatePurchaseOrder)
 			adm.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(`{"message":"Welcome to Admin Operations Portal API"}`))
 			})

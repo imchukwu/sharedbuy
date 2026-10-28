@@ -8,6 +8,7 @@ import { MyUnitsPage } from './pages/member/MyUnitsPage';
 import { WalletPage } from './pages/member/WalletPage';
 import { ManagerDashboardPage } from './pages/manager/ManagerDashboardPage';
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage';
+import { DistributorDashboardPage } from './pages/distributor/DistributorDashboardPage';
 import { RouteGuard } from './components/portal/RouteGuard';
 
 export const App: React.FC = () => {
@@ -34,7 +35,17 @@ export const App: React.FC = () => {
                 }
               />
 
-              {/* 3. Admin Portal Route (Guarded) */}
+              {/* 3. Distributor Portal Route (Guarded) */}
+              <Route
+                path="/distributor/*"
+                element={
+                  <RouteGuard requiredRole="DISTRIBUTOR">
+                    <DistributorDashboardPage />
+                  </RouteGuard>
+                }
+              />
+
+              {/* 4. Admin Portal Route (Guarded) */}
               <Route
                 path="/admin/*"
                 element={

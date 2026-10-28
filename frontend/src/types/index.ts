@@ -1,4 +1,4 @@
-export type UserRole = 'MEMBER' | 'UNIT_MANAGER' | 'ADMIN';
+export type UserRole = 'MEMBER' | 'UNIT_MANAGER' | 'DISTRIBUTOR' | 'ADMIN';
 export type AdminSubrole = 'SUPER_ADMIN' | 'OPS' | 'FINANCE' | 'SUPPORT';
 
 export interface User {
@@ -134,4 +134,47 @@ export interface UnitMember {
 export interface AuthResponse {
   token: string;
   user: User;
+}
+
+export interface DistributorCommodity {
+  id: string;
+  distributor_id: string;
+  distributor_name: string;
+  distributor_phone: string;
+  product_id: string;
+  product_name: string;
+  category: string;
+  pack_size: string;
+  price_per_pack_kobo: number;
+  delivery_fee_kobo: number;
+  min_order_packs: number;
+  available_packs: number;
+  warehouse_location: string;
+  status: 'ACTIVE' | 'OUT_OF_STOCK';
+  updated_at: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  order_number: string;
+  distributor_id: string;
+  distributor_name: string;
+  distributor_phone: string;
+  created_by_admin_id: string;
+  destination_area: string;
+  destination_landmarks: string[];
+  total_packs: number;
+  total_goods_cost_kobo: number;
+  total_delivery_fee_kobo: number;
+  total_amount_kobo: number;
+  status: 'PENDING' | 'CONFIRMED' | 'DISPATCHED' | 'DELIVERED' | 'CANCELLED';
+  associated_unit_ids: string[];
+  driver_name?: string;
+  driver_phone?: string;
+  vehicle_plate?: string;
+  waybill_number?: string;
+  notes?: string;
+  ordered_at: string;
+  dispatched_at?: string;
+  delivered_at?: string;
 }

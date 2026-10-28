@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { formatKobo, formatDate } from '../../utils/formatters';
-import type { Unit } from '../../types';
+import type { Unit, DistributorCommodity, PurchaseOrder } from '../../types';
 import {
   AlertTriangle,
   History,
@@ -10,7 +10,9 @@ import {
   Loader2,
   RefreshCw,
   CheckCircle,
-  ShieldCheck
+  ShieldCheck,
+  Truck,
+  X
 } from 'lucide-react';
 import { CreateUnitModal } from '../../components/unit/CreateUnitModal';
 
@@ -21,6 +23,16 @@ export const AdminDashboardPage: React.FC = () => {
   const [liveUnits, setLiveUnits] = useState<Unit[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
 
+  // Supplier & PO State
+  const [distributorCommodities, setDistributorCommodities] = useState<DistributorCommodity[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [isPOModalOpen, setIsPOModalOpen] = useState(false);
+  const [selectedUnitIdForPO, setSelectedUnitIdForPO] = useState('');
+  const [selectedCommodityId, setSelectedCommodityId] = useState('');
+  const [poPacks, setPoPacks] = useState(1);
+  const [poNotes, setPoNotes] = useState('Bulk truck dispatch to Piwoyi estate hub.');
+  const [creatingPO, setCreatingPO] = useState(false);
+
   // Lifecycle check state
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
   const [lifecycleReport, setLifecycleReport] = useState<{
@@ -30,24 +42,41 @@ export const AdminDashboardPage: React.FC = () => {
     message: string;
   } | null>(null);
 
-  const fetchUnits = async () => {
+  const fetchAllData = async () => {
     setLoadingUnits(true);
     try {
-      const res = await fetch('/api/units');
-      if (res.ok) {
-        const data = await res.json();
+      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const [uRes, commRes, poRes] = await Promise.all([
+        fetch('/api/units'),
+        fetch('/api/distributor/commodities', { headers }),
+        fetch('/api/admin/orders', { headers }),
+      ]);
+
+      if (uRes.ok) {
+        const data = await uRes.json();
         setLiveUnits(data || []);
       }
+      if (commRes.ok) {
+        const commData = await commRes.json();
+        setDistributorCommodities(commData || []);
+        if (commData && commData.length > 0 && !selectedCommodityId) {
+          setSelectedCommodityId(commData[0].id);
+        }
+      }
+      if (poRes.ok) {
+        const poData = await poRes.json();
+        setPurchaseOrders(poData || []);
+      }
     } catch (err) {
-      console.error('Failed to load live units', err);
+      console.error('Failed to load admin data', err);
     } finally {
       setLoadingUnits(false);
     }
   };
 
   useEffect(() => {
-    fetchUnits();
-  }, []);
+    fetchAllData();
+  }, [token]);
 
   const handleTriggerLifecycle = async () => {
     if (!token) return;
@@ -60,12 +89,71 @@ export const AdminDashboardPage: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         setLifecycleReport(data);
-        fetchUnits();
+        fetchAllData();
       }
     } catch (err) {
       alert('Lifecycle engine check failed');
     } finally {
       setLifecycleLoading(false);
+    }
+  };
+
+  const handleCreatePurchaseOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+
+    const unit = liveUnits.find((u) => u.id === selectedUnitIdForPO) || liveUnits[0];
+    const comm =
+      distributorCommodities.find((c) => c.id === selectedCommodityId) ||
+      distributorCommodities[0] || {
+        id: 'comm-rice-50kg',
+        distributor_id: 'user-dist-dahiru',
+        distributor_name: 'Alhaji Dahiru (Northern Agro Millers & Grain Depot)',
+        distributor_phone: '+2348055556666',
+        price_per_pack_kobo: 6650000,
+        delivery_fee_kobo: 1312500,
+      };
+
+    const packs = Math.max(1, poPacks);
+    const goodsCost = comm.price_per_pack_kobo * packs;
+    const deliveryFee = comm.delivery_fee_kobo * packs;
+
+    setCreatingPO(true);
+    try {
+      const res = await fetch('/api/admin/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          distributor_id: comm.distributor_id,
+          distributor_name: comm.distributor_name,
+          distributor_phone: comm.distributor_phone,
+          destination_area: 'Piwoyi District Hub, Abuja',
+          destination_landmarks: [unit ? unit.collection_landmark : '16 Biana street, New Extension, Piwoyi'],
+          total_packs: packs,
+          total_goods_cost_kobo: goodsCost,
+          total_delivery_fee_kobo: deliveryFee,
+          total_amount_kobo: goodsCost + deliveryFee,
+          status: 'PENDING',
+          associated_unit_ids: unit ? [unit.id] : ['unit-piwoyi-rice-01'],
+          notes: poNotes,
+        }),
+      });
+
+      if (res.ok) {
+        setIsPOModalOpen(false);
+        alert('✓ Purchase Order issued to Distributor! They can now accept and dispatch from their portal.');
+        fetchAllData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to create purchase order');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Network error');
+    } finally {
+      setCreatingPO(false);
     }
   };
 
@@ -196,7 +284,7 @@ export const AdminDashboardPage: React.FC = () => {
                 <AlertTriangle size={15} className="text-amber-700" /> Platform Operational Summary (Piwoyi, Abuja Hubs)
               </span>
               <button
-                onClick={fetchUnits}
+                onClick={fetchAllData}
                 className="text-amber-800 hover:text-amber-950 font-bold flex items-center gap-1 text-[11px] cursor-pointer"
               >
                 <RefreshCw size={12} className={loadingUnits ? 'animate-spin' : ''} /> Refresh
@@ -370,32 +458,196 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* Tab: Ordering Console */}
       {activeTab === 'ordering' && (
-        <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-2xs space-y-4 text-xs">
-          <div className="flex justify-between items-center">
-            <h2 className="font-bold text-sm text-gray-900">Supplier Ordering & Consolidation Console</h2>
-            <span className="px-2.5 py-1 rounded-md bg-purple-50 text-purple-800 font-bold text-[11px]">
-              3 Verified Distributors
-            </span>
+        <div className="space-y-5 text-xs">
+          {/* Header & Action */}
+          <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-800 bg-purple-50 px-2.5 py-0.5 rounded-md">
+                  Wholesale Procurement & Dispatch
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-bold text-[10px]">
+                  {purchaseOrders.length} Purchase Orders
+                </span>
+              </div>
+              <h2 className="font-bold text-base text-gray-900 mt-1">Supplier Ordering & Dispatch Console</h2>
+              <p className="text-gray-500 text-[11px] mt-0.5">
+                Consolidate filled community units across Piwoyi into bulk purchase orders sent directly to verified agro millers and distributors.
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                if (liveUnits.length > 0 && !selectedUnitIdForPO) {
+                  setSelectedUnitIdForPO(liveUnits[0].id);
+                }
+                if (distributorCommodities.length > 0 && !selectedCommodityId) {
+                  setSelectedCommodityId(distributorCommodities[0].id);
+                }
+                setIsPOModalOpen(true);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer self-start sm:self-auto shrink-0"
+            >
+              <PlusCircle size={15} />
+              <span>Issue Bulk Purchase Order</span>
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
-              <div className="font-bold text-gray-900">Northern Agro Millers</div>
-              <div className="text-[11px] text-gray-500">Direct Mill Dispatch • Rating: 4.90★</div>
-              <div className="mt-2 text-emerald-800 font-bold">Rice: ₦75,000 / bag</div>
+          {/* Operational Workflow Card */}
+          <div className="bg-gradient-to-r from-purple-900 to-indigo-900 text-white rounded-2xl p-4 shadow-md text-xs space-y-2">
+            <div className="font-bold flex items-center gap-2 text-purple-200">
+              <Truck size={16} className="text-amber-400" />
+              <span>Piwoyi Hub Direct-from-Source Logistics Pipeline</span>
+            </div>
+            <p className="text-purple-100/90 text-[11px] leading-relaxed">
+              When a Purchase Order is issued, associated Piwoyi units lock into <strong>ORDERED</strong> status. The supplier portal receives the order, allocates truck space, and enters the driver contact, plate number, and official waybill number. Upon offloading at Piwoyi, units transition to <strong>READY FOR COLLECTION</strong> for immediate member pickup.
+            </p>
+          </div>
+
+          {/* Section: Live Distributor Commodity Quotes */}
+          <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-2xs space-y-3">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-sm text-gray-900">Live Verified Agro Distributor Quotes</h3>
+                <p className="text-[11px] text-gray-500">Real-time gate pricing and delivery rates quoted by accredited commodity depot suppliers.</p>
+              </div>
+              <span className="text-[11px] font-bold text-gray-500">
+                {distributorCommodities.length} active listings
+              </span>
             </div>
 
-            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
-              <div className="font-bold text-gray-900">Dawanau & Coastal Merchants</div>
-              <div className="text-[11px] text-gray-500">National Grain & Seafood Depot • Rating: 4.85★</div>
-              <div className="mt-2 text-emerald-800 font-bold">Crayfish: ₦48,000 / bag</div>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+              {distributorCommodities.map((comm) => (
+                <div key={comm.id} className="p-3.5 rounded-xl bg-gray-50 border border-gray-200/90 hover:border-purple-300 transition-colors flex flex-col justify-between space-y-2">
+                  <div>
+                    <div className="font-bold text-gray-900 text-xs">{comm.product_name}</div>
+                    <div className="text-[10px] text-purple-700 font-semibold mt-0.5">{comm.distributor_name}</div>
+                    <div className="text-[10px] text-gray-500">{comm.distributor_phone}</div>
+                  </div>
 
-            <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
-              <div className="font-bold text-gray-900">Eko & Eastern Oil Palm Depot</div>
-              <div className="text-[11px] text-gray-500">Oils & Dairy Wholesalers • Rating: 4.75★</div>
-              <div className="mt-2 text-emerald-800 font-bold">Palm Oil: ₦35,000 / 25L</div>
+                  <div className="pt-2 border-t border-gray-200 space-y-1">
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-gray-500">Wholesale Price:</span>
+                      <strong className="text-emerald-800">{formatKobo(comm.price_per_pack_kobo)}</strong>
+                    </div>
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-gray-500">Waybill Logistics:</span>
+                      <strong className="text-gray-700">{formatKobo(comm.delivery_fee_kobo)}</strong>
+                    </div>
+                    <div className="flex justify-between text-[11px] font-bold text-purple-900 pt-1 border-t border-gray-200/60">
+                      <span>Total Landed:</span>
+                      <span>{formatKobo(comm.price_per_pack_kobo + comm.delivery_fee_kobo)}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setSelectedCommodityId(comm.id);
+                      setIsPOModalOpen(true);
+                    }}
+                    className="w-full mt-2 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-800 font-bold text-[11px] transition-colors cursor-pointer"
+                  >
+                    Select for PO
+                  </button>
+                </div>
+              ))}
             </div>
+          </div>
+
+          {/* Section: Purchase Orders Log */}
+          <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-2xs space-y-3">
+            <h3 className="font-bold text-sm text-gray-900">Purchase Orders & Waybill Tracking</h3>
+
+            {purchaseOrders.length === 0 ? (
+              <div className="py-8 text-center text-gray-500 text-xs">
+                No bulk purchase orders generated yet. Use the "Issue Bulk Purchase Order" button above to order from distributors.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {purchaseOrders.map((po) => {
+                  const isDelivered = po.status === 'DELIVERED';
+                  const isDispatched = po.status === 'DISPATCHED';
+
+                  return (
+                    <div
+                      key={po.id}
+                      className="p-4 rounded-xl border border-gray-200 bg-gray-50 hover:bg-white transition-all space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-200/80 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-xs text-gray-900">{po.order_number}</span>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
+                              isDelivered
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : isDispatched
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {isDelivered
+                              ? '✓ DELIVERED AT HUB'
+                              : isDispatched
+                              ? '🚚 TRUCK IN TRANSIT'
+                              : '⏳ PENDING DISPATCH'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-gray-500">
+                          Issued: <strong>{formatDate(po.ordered_at)}</strong>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px]">
+                        <div>
+                          <div className="text-gray-500">Supplier:</div>
+                          <div className="font-bold text-gray-900">{po.distributor_name}</div>
+                          <div className="text-gray-500">{po.distributor_phone}</div>
+                        </div>
+
+                        <div>
+                          <div className="text-gray-500">Destination Hub:</div>
+                          <div className="font-bold text-gray-900">{po.destination_area}</div>
+                          <div className="text-gray-600 truncate">{po.destination_landmarks.join(', ')}</div>
+                        </div>
+
+                        <div>
+                          <div className="text-gray-500">Packs & Financials:</div>
+                          <div className="font-bold text-gray-900">
+                            {po.total_packs} Pack(s) • Total: {formatKobo(po.total_amount_kobo)}
+                          </div>
+                          <div className="text-gray-500 text-[10px]">
+                            Wholesale: {formatKobo(po.total_goods_cost_kobo)} | Logistics: {formatKobo(po.total_delivery_fee_kobo)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Driver & Waybill Details if Dispatched */}
+                      {po.waybill_number && (
+                        <div className="p-2.5 rounded-lg bg-blue-50/80 border border-blue-200 text-blue-950 text-[11px] flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <Truck size={14} className="text-blue-700 shrink-0" />
+                            <span>
+                              Waybill: <strong>{po.waybill_number}</strong> • Driver: <strong>{po.driver_name}</strong> ({po.driver_phone}) • Truck: <strong>{po.vehicle_plate}</strong>
+                            </span>
+                          </div>
+                          {po.dispatched_at && (
+                            <span className="text-[10px] text-blue-700">
+                              Dispatched: {formatDate(po.dispatched_at)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {po.notes && (
+                        <div className="text-[11px] text-gray-500 italic bg-white p-2 rounded-lg border border-gray-100">
+                          Notes: {po.notes}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -472,10 +724,141 @@ export const AdminDashboardPage: React.FC = () => {
         </div>
       )}
 
+      {/* PO Creation Modal */}
+      {isPOModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 space-y-4 text-xs">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="font-bold text-base text-gray-900">Issue Bulk Purchase Order</h3>
+                <p className="text-[11px] text-gray-500">Order from verified agro distributor for Piwoyi hub dispatch.</p>
+              </div>
+              <button
+                onClick={() => setIsPOModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreatePurchaseOrder} className="space-y-3.5">
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">Select Piwoyi Unit to Fulfill:</label>
+                <select
+                  value={selectedUnitIdForPO}
+                  onChange={(e) => setSelectedUnitIdForPO(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-600 bg-white"
+                >
+                  {liveUnits.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.product_name} ({u.current_members_count}/{u.max_members} shares) — {u.collection_landmark}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">Select Distributor Commodity Quote:</label>
+                <select
+                  value={selectedCommodityId}
+                  onChange={(e) => setSelectedCommodityId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-600 bg-white"
+                >
+                  {distributorCommodities.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.product_name} — {c.distributor_name} ({formatKobo(c.price_per_pack_kobo)} + {formatKobo(c.delivery_fee_kobo)} logistics)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">Total Wholesale Packs / Bags:</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={poPacks}
+                  onChange={(e) => setPoPacks(parseInt(e.target.value) || 1)}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-600"
+                />
+              </div>
+
+              {/* Live Cost Calculation Card */}
+              {(() => {
+                const comm =
+                  distributorCommodities.find((c) => c.id === selectedCommodityId) ||
+                  distributorCommodities[0];
+                if (!comm) return null;
+                const packs = Math.max(1, poPacks);
+                const goodsCost = comm.price_per_pack_kobo * packs;
+                const deliveryCost = comm.delivery_fee_kobo * packs;
+                const totalCost = goodsCost + deliveryCost;
+
+                return (
+                  <div className="p-3.5 rounded-xl bg-purple-50/70 border border-purple-200 space-y-1.5">
+                    <div className="font-bold text-purple-900 text-[11px] uppercase tracking-wide">
+                      Purchase Order Escrow Breakdown
+                    </div>
+                    <div className="flex justify-between text-gray-700">
+                      <span>Wholesale Goods ({packs} pack):</span>
+                      <strong>{formatKobo(goodsCost)}</strong>
+                    </div>
+                    <div className="flex justify-between text-gray-700">
+                      <span>Logistics & Waybill Fee:</span>
+                      <strong>{formatKobo(deliveryCost)}</strong>
+                    </div>
+                    <div className="flex justify-between font-bold text-purple-950 pt-1.5 border-t border-purple-200 text-xs">
+                      <span>Total Amount Escrowed to Supplier:</span>
+                      <span>{formatKobo(totalCost)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div>
+                <label className="block text-gray-700 font-semibold mb-1">Dispatch Notes & Gate Instructions:</label>
+                <textarea
+                  rows={2}
+                  value={poNotes}
+                  onChange={(e) => setPoNotes(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-600 resize-none"
+                  placeholder="e.g. Call Coordinator Aisha upon truck arrival in Piwoyi"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPOModalOpen(false)}
+                  className="w-1/2 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold hover:bg-gray-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={creatingPO}
+                  className="w-1/2 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all"
+                >
+                  {creatingPO ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Issuing PO...</span>
+                    </>
+                  ) : (
+                    <span>Confirm & Issue PO</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <CreateUnitModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
-        onUnitCreated={fetchUnits}
+        onUnitCreated={fetchAllData}
       />
     </div>
   );

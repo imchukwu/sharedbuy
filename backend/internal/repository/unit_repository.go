@@ -553,6 +553,20 @@ func (r *UnitRepository) CreateUnit(ctx context.Context, u *domain.Unit) error {
 	return nil
 }
 
+func (r *UnitRepository) UpdateUnitStatus(ctx context.Context, unitID, status string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for i := range r.mockUnits {
+		if r.mockUnits[i].ID == unitID {
+			r.mockUnits[i].Status = status
+			r.mockUnits[i].UpdatedAt = time.Now()
+			return nil
+		}
+	}
+	return errors.New("unit not found")
+}
+
 func (r *UnitRepository) CheckLifecycleAndExpire(
 	ctx context.Context,
 	refundFn func(userID string, amountKobo int64, reason, refID string) error,

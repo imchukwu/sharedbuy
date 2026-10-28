@@ -13,6 +13,7 @@ interface AuthContextType {
   logout: () => void;
   isMember: boolean;
   isManager: boolean;
+  isDistributor: boolean;
   isAdmin: boolean;
 }
 
@@ -136,6 +137,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else if (role === 'UNIT_MANAGER') {
         // Aisha Bello pre-seeded manager
         await loginWithOTP('+2348011112222', '123456');
+      } else if (role === 'DISTRIBUTOR') {
+        // Alhaji Dahiru pre-seeded distributor
+        await loginWithOTP('+2348055556666', '123456');
       } else {
         // Babagana Kyari pre-seeded member
         await loginWithOTP('+2348100000001', '123456');
@@ -154,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isMember = user?.role === 'MEMBER';
   const isManager = user?.role === 'UNIT_MANAGER' || user?.role === 'ADMIN';
+  const isDistributor = user?.role === 'DISTRIBUTOR';
   const isAdmin = user?.role === 'ADMIN';
 
   return (
@@ -170,6 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         isMember,
         isManager,
+        isDistributor,
         isAdmin,
       }}
     >

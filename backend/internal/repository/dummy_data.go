@@ -284,10 +284,23 @@ func getMockUsers() map[string]*domain.User {
 	fatimaEmail := "fatima.m@gmail.com"
 	ibrahimEmail := "ibrahim.d@yahoo.com"
 	chidinmaEmail := "chidinma.eze@gmail.com"
+	dahiruEmail := "distributor@northernagro.ng"
 
 	mem1Email := "babagana@gmail.com"
 
 	users := map[string]*domain.User{
+		"user-dist-dahiru": {
+			ID:        "user-dist-dahiru",
+			FullName:  "Alhaji Dahiru (Northern Agro Millers & Grain Depot)",
+			Phone:     "+2348055556666",
+			Email:     &dahiruEmail,
+			Role:      domain.RoleDistributor,
+			AreaID:    &areaPiwoyi,
+			Status:    "ACTIVE",
+			Rating:    4.94,
+			CreatedAt: time.Now().Add(-60 * 24 * time.Hour),
+			UpdatedAt: time.Now(),
+		},
 		"user-admin-01": {
 			ID:           "user-admin-01",
 			FullName:     "SharedBuy Operations Admin",

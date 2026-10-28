@@ -11,6 +11,7 @@ export const Navbar: React.FC = () => {
   const location = useLocation();
 
   const isManagerRoute = location.pathname.startsWith('/manager');
+  const isDistributorRoute = location.pathname.startsWith('/distributor');
   const isAdminRoute = location.pathname.startsWith('/admin');
 
   return (
@@ -27,7 +28,7 @@ export const Navbar: React.FC = () => {
                 Shared<span className="text-emerald-700">Buy</span>
               </span>
               <span className="text-[10px] text-gray-400 font-medium -mt-0.5 block">
-                {isAdminRoute ? 'Admin Portal' : isManagerRoute ? 'Manager Portal' : 'Bulk Staples Nigeria'}
+                {isAdminRoute ? 'Admin Portal' : isDistributorRoute ? 'Distributor Portal' : isManagerRoute ? 'Manager Portal' : 'Bulk Staples Nigeria'}
               </span>
             </div>
           </Link>
@@ -37,7 +38,7 @@ export const Navbar: React.FC = () => {
             <Link
               to="/"
               className={`px-3 py-1 rounded-full transition-colors ${
-                !isManagerRoute && !isAdminRoute ? 'bg-white text-emerald-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                !isManagerRoute && !isDistributorRoute && !isAdminRoute ? 'bg-white text-emerald-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               Member
@@ -49,6 +50,14 @@ export const Navbar: React.FC = () => {
               }`}
             >
               Manager
+            </Link>
+            <Link
+              to="/distributor"
+              className={`px-3 py-1 rounded-full transition-colors ${
+                isDistributorRoute ? 'bg-white text-amber-800 shadow-2xs font-bold' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Distributor
             </Link>
             <Link
               to="/admin"
