@@ -42,11 +42,13 @@ func main() {
 
 	// 3. Services
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
+	paymentService := service.NewPaymentService(unitRepo, userRepo, cfg.PaystackSecretKey, cfg.PaystackPublicKey)
 
 	// 4. Handlers
 	authHandler := handler.NewAuthHandler(authService, userRepo)
 	metaHandler := handler.NewMetaHandler(unitRepo)
 	unitHandler := handler.NewUnitHandler(unitRepo)
+	paymentHandler := handler.NewPaymentHandler(paymentService)
 
 	// 5. Router Setup
 	r := chi.NewRouter()
@@ -62,7 +64,7 @@ func main() {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "x-paystack-signature"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -82,6 +84,18 @@ func main() {
 		api.Get("/units", unitHandler.ListUnits)
 		api.Get("/units/{id}", unitHandler.GetUnit)
 		api.Get("/units/{id}/members", unitHandler.GetUnitMembers)
+
+		// Payments & Paystack Checkout
+		api.Route("/payments", func(pay chi.Router) {
+			pay.Group(func(authed chi.Router) {
+				authed.Use(middleware.RequireAuth)
+				authed.Post("/initialize", paymentHandler.InitializePayment)
+			})
+			pay.Get("/verify/{reference}", paymentHandler.VerifyPayment)
+		})
+
+		// Paystack Webhook
+		api.Post("/webhooks/paystack", paymentHandler.PaystackWebhook)
 
 		// Authentication (Public)
 		api.Route("/auth", func(auth chi.Router) {

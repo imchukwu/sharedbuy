@@ -5,10 +5,12 @@ import (
 )
 
 type Config struct {
-	Port        string
-	DatabaseURL string
-	JWTSecret   string
-	Environment string
+	Port              string
+	DatabaseURL       string
+	JWTSecret         string
+	Environment       string
+	PaystackSecretKey string
+	PaystackPublicKey string
 }
 
 func Load() *Config {
@@ -33,10 +35,15 @@ func Load() *Config {
 		env = "development"
 	}
 
+	paystackSecret := os.Getenv("PAYSTACK_SECRET_KEY")
+	paystackPublic := os.Getenv("PAYSTACK_PUBLIC_KEY")
+
 	return &Config{
-		Port:        port,
-		DatabaseURL: dbURL,
-		JWTSecret:   jwtSecret,
-		Environment: env,
+		Port:              port,
+		DatabaseURL:       dbURL,
+		JWTSecret:         jwtSecret,
+		Environment:       env,
+		PaystackSecretKey: paystackSecret,
+		PaystackPublicKey: paystackPublic,
 	}
 }

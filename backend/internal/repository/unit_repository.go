@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"sharedbuy-backend/internal/domain"
 )
@@ -339,4 +340,113 @@ func (r *UnitRepository) GetProducts(ctx context.Context) ([]domain.Product, err
 		products = append(products, p)
 	}
 	return products, nil
+}
+
+func (r *UnitRepository) JoinUnit(ctx context.Context, unitID, userID, userName, userPhone string, sharesCount int, amountKobo int64, collectionCode string) (*domain.UnitMember, error) {
+	if r.db == nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+
+		var targetUnit *domain.Unit
+		for i := range r.mockUnits {
+			if r.mockUnits[i].ID == unitID {
+				targetUnit = &r.mockUnits[i]
+				break
+			}
+		}
+
+		if targetUnit == nil {
+			return nil, errors.New("unit not found")
+		}
+
+		if targetUnit.Status != domain.UnitStatusOpen {
+			return nil, fmt.Errorf("unit is %s and not accepting new members", targetUnit.Status)
+		}
+
+		if targetUnit.CurrentMembersCount >= targetUnit.MaxMembers {
+			return nil, errors.New("unit is already full")
+		}
+
+		memberID := fmt.Sprintf("um-%d", time.Now().UnixNano()%1000000)
+		newMember := domain.UnitMember{
+			ID:               memberID,
+			UnitID:           unitID,
+			UserID:           userID,
+			UserName:         userName,
+			UserPhone:        userPhone,
+			SharesCount:      sharesCount,
+			AmountPaidKobo:   amountKobo,
+			PaymentStatus:    domain.PaymentStatusPaid,
+			CollectionStatus: domain.CollectionStatusPending,
+			CollectionCode:   collectionCode,
+			JoinedAt:         time.Now(),
+		}
+
+		if r.mockMembers == nil {
+			r.mockMembers = make(map[string][]domain.UnitMember)
+		}
+		r.mockMembers[unitID] = append(r.mockMembers[unitID], newMember)
+
+		targetUnit.CurrentMembersCount++
+		targetUnit.CurrentSharesCount += sharesCount
+		targetUnit.UpdatedAt = time.Now()
+
+		if targetUnit.CurrentMembersCount >= targetUnit.MaxMembers {
+			targetUnit.Status = domain.UnitStatusFull
+		}
+
+		return &newMember, nil
+	}
+
+	// PostgreSQL implementation
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var maxMembers, currentMembers int
+	var status string
+	err = tx.QueryRowContext(ctx, "SELECT max_members, status, (SELECT COUNT(DISTINCT user_id) FROM unit_members WHERE unit_id = $1 AND payment_status = 'PAID') FROM units WHERE id = $1 FOR UPDATE", unitID).Scan(&maxMembers, &status, &currentMembers)
+	if err != nil {
+		return nil, fmt.Errorf("error verifying unit: %w", err)
+	}
+
+	if status != domain.UnitStatusOpen {
+		return nil, fmt.Errorf("unit is not open for new joins (status: %s)", status)
+	}
+	if currentMembers >= maxMembers {
+		return nil, errors.New("unit is already full")
+	}
+
+	memberID := fmt.Sprintf("um-%d", time.Now().UnixNano()%1000000)
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO unit_members (id, unit_id, user_id, shares_count, amount_paid_kobo, payment_status, collection_status, collection_code, joined_at)
+		VALUES ($1, $2, $3, $4, $5, 'PAID', 'PENDING', $6, NOW())
+	`, memberID, unitID, userID, sharesCount, amountKobo, collectionCode)
+	if err != nil {
+		return nil, fmt.Errorf("error inserting unit member: %w", err)
+	}
+
+	if currentMembers+1 >= maxMembers {
+		_, _ = tx.ExecContext(ctx, "UPDATE units SET status = 'FULL', updated_at = NOW() WHERE id = $1", unitID)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &domain.UnitMember{
+		ID:               memberID,
+		UnitID:           unitID,
+		UserID:           userID,
+		UserName:         userName,
+		UserPhone:        userPhone,
+		SharesCount:      sharesCount,
+		AmountPaidKobo:   amountKobo,
+		PaymentStatus:    domain.PaymentStatusPaid,
+		CollectionStatus: domain.CollectionStatusPending,
+		CollectionCode:   collectionCode,
+		JoinedAt:         time.Now(),
+	}, nil
 }

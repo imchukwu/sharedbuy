@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import type { Unit, Area } from '../../types';
 import { formatKobo, formatTimeLeft, formatDate } from '../../utils/formatters';
 import {
@@ -11,13 +12,16 @@ import {
   Share2,
   AlertCircle,
   ExternalLink,
-  Navigation
+  Navigation,
+  Loader2,
+  Copy,
+  Check
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AuthModal } from '../../components/auth/AuthModal';
 
 export const HomePage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [units, setUnits] = useState<Unit[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [selectedArea, setSelectedArea] = useState<string>('');
@@ -26,17 +30,16 @@ export const HomePage: React.FC = () => {
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [joinedSuccess, setJoinedSuccess] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentSuccessData, setPaymentSuccessData] = useState<{
+    collectionCode: string;
+    sharingDate: string;
+    amountKobo: number;
+    reference: string;
+  } | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
 
-  useEffect(() => {
-    // Fetch areas
-    fetch('/api/areas')
-      .then((res) => res.json())
-      .then((data) => setAreas(data))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    setLoading(true);
+  const fetchUnits = () => {
     const params = new URLSearchParams();
     if (selectedArea) params.append('area_id', selectedArea);
     if (selectedSort) params.append('sort', selectedSort);
@@ -48,7 +51,100 @@ export const HomePage: React.FC = () => {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    // Fetch areas
+    fetch('/api/areas')
+      .then((res) => res.json())
+      .then((data) => setAreas(data))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchUnits();
   }, [selectedArea, selectedSort]);
+
+  const handleJoinAndPay = async () => {
+    if (!user || !token) {
+      setAuthModalOpen(true);
+      return;
+    }
+    if (!selectedUnit) return;
+
+    setPaymentLoading(true);
+    try {
+      const initRes = await fetch('/api/payments/initialize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          unit_id: selectedUnit.id,
+          shares_count: 1,
+          callback_url: window.location.origin,
+        }),
+      });
+
+      const initData = await initRes.json();
+      if (!initRes.ok) {
+        alert(initData.error || 'Failed to initialize payment');
+        setPaymentLoading(false);
+        return;
+      }
+
+      // If live Paystack key is available and popup script loaded
+      if (!initData.is_mock && initData.public_key && (window as any).PaystackPop) {
+        const handler = (window as any).PaystackPop.setup({
+          key: initData.public_key,
+          email: user.email || `${user.phone.replace('+', '')}@sharedbuy.ng`,
+          amount: initData.amount_kobo,
+          currency: 'NGN',
+          ref: initData.reference,
+          callback: async function (response: any) {
+            await verifyPayment(response.reference);
+          },
+          onClose: function () {
+            setPaymentLoading(false);
+          },
+        });
+        handler.openIframe();
+      } else {
+        // Mock / Sandbox flow: verify directly
+        await verifyPayment(initData.reference);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Payment failed');
+      setPaymentLoading(false);
+    }
+  };
+
+  const verifyPayment = async (reference: string) => {
+    try {
+      const verifyRes = await fetch(`/api/payments/verify/${reference}`);
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok) {
+        alert(verifyData.error || 'Payment verification failed');
+        setPaymentLoading(false);
+        return;
+      }
+
+      setPaymentSuccessData({
+        collectionCode: verifyData.collection_code,
+        sharingDate: verifyData.sharing_date || selectedUnit!.sharing_date,
+        amountKobo: verifyData.amount_kobo,
+        reference: reference,
+      });
+      setJoinedSuccess(true);
+      fetchUnits();
+    } catch (err: any) {
+      alert('Verification error');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
 
   const handleJoinClick = (unit: Unit) => {
     setSelectedUnit(unit);
@@ -361,31 +457,83 @@ export const HomePage: React.FC = () => {
                 </div>
               </div>
               <button
-                onClick={() => { setSelectedUnit(null); setJoinedSuccess(false); }}
+                onClick={() => { setSelectedUnit(null); setJoinedSuccess(false); setPaymentSuccessData(null); }}
                 className="p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {joinedSuccess ? (
-              <div className="py-8 text-center space-y-3">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
-                  <CheckCircle size={36} />
+            {joinedSuccess && paymentSuccessData ? (
+              <div className="py-5 text-center space-y-4">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-inner">
+                  <CheckCircle size={32} />
                 </div>
-                <h4 className="text-lg font-bold text-gray-900">You're in this unit!</h4>
-                <p className="text-xs text-gray-600 max-w-xs mx-auto">
-                  Your payment is secured in escrow. Once the unit fills up, distributor order is dispatched.
-                </p>
-                <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-xs font-medium text-emerald-900">
-                  Sharing Day: <strong>{formatDate(selectedUnit.sharing_date)}</strong>
+                <div>
+                  <h4 className="text-lg font-bold text-gray-900">Payment Confirmed & Share Secured!</h4>
+                  <p className="text-xs text-gray-600 mt-1 max-w-sm mx-auto">
+                    Your contribution of <strong>{formatKobo(paymentSuccessData.amountKobo)}</strong> is held safely in escrow.
+                  </p>
                 </div>
-                <button
-                  onClick={() => { setSelectedUnit(null); setJoinedSuccess(false); }}
-                  className="w-full py-2.5 rounded-xl bg-emerald-700 text-white font-bold text-xs cursor-pointer"
-                >
-                  Done
-                </button>
+
+                {/* Pickup Collection Code Card */}
+                <div className="bg-emerald-50/80 border-2 border-dashed border-emerald-300 rounded-2xl p-4 text-center">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
+                    Your Pickup Collection Code
+                  </div>
+                  <div className="flex items-center justify-center gap-2 mt-1">
+                    <span className="text-3xl font-black tracking-widest text-emerald-950 font-mono">
+                      {paymentSuccessData.collectionCode}
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(paymentSuccessData.collectionCode);
+                        setCodeCopied(true);
+                        setTimeout(() => setCodeCopied(false), 2000);
+                      }}
+                      className="p-1.5 rounded-lg bg-emerald-100/70 hover:bg-emerald-200 text-emerald-800 transition-colors cursor-pointer"
+                      title="Copy Code"
+                    >
+                      {codeCopied ? <Check size={16} /> : <Copy size={16} />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-emerald-700 mt-1.5">
+                    Show this 6-digit code to Unit Manager <strong>{selectedUnit.manager_name}</strong> on collection day.
+                  </p>
+                </div>
+
+                {/* Receipt Details */}
+                <div className="bg-white rounded-xl border border-gray-200 p-3 text-xs text-left space-y-1.5">
+                  <div className="flex justify-between text-gray-600">
+                    <span>Reference</span>
+                    <span className="font-mono text-gray-800">{paymentSuccessData.reference}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <span>Sharing Date</span>
+                    <span className="font-semibold text-emerald-800">{formatDate(paymentSuccessData.sharingDate)}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <span>Pickup Hub</span>
+                    <span className="font-semibold text-gray-800 truncate max-w-[200px]">{selectedUnit.collection_landmark}</span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    onClick={() => { setSelectedUnit(null); setJoinedSuccess(false); setPaymentSuccessData(null); }}
+                    className="w-full py-2.5 rounded-xl border border-gray-300 text-gray-700 font-semibold text-xs hover:bg-gray-50 transition-colors cursor-pointer"
+                  >
+                    Close
+                  </button>
+                  <Link
+                    to="/my-units"
+                    className="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <span>View In My Units</span>
+                    <ArrowRight size={14} />
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="py-3 space-y-4">
@@ -458,20 +606,36 @@ export const HomePage: React.FC = () => {
                 {/* Join and Pay Button */}
                 <div>
                   <button
+                    disabled={paymentLoading || selectedUnit.status !== 'OPEN'}
                     onClick={() => {
                       if (!user) {
                         setAuthModalOpen(true);
                       } else {
-                        setJoinedSuccess(true);
+                        handleJoinAndPay();
                       }
                     }}
-                    className="w-full py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                    className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer ${
+                      paymentLoading
+                        ? 'bg-emerald-800 text-emerald-100 cursor-wait'
+                        : selectedUnit.status !== 'OPEN'
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                    }`}
                   >
-                    <span>{user ? `Join & Pay ${formatKobo(selectedUnit.price_per_share_quoted_kobo)}` : 'Sign In to Join Unit'}</span>
-                    <ArrowRight size={16} />
+                    {paymentLoading ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>Securing Your Share...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>{user ? `Join & Pay ${formatKobo(selectedUnit.price_per_share_quoted_kobo)}` : 'Sign In to Join Unit'}</span>
+                        <ArrowRight size={16} />
+                      </>
+                    )}
                   </button>
                   <p className="text-[11px] text-gray-400 text-center mt-2">
-                    Paystack test payment • Auto-refund if unit does not fill by deadline
+                    Paystack secured checkout • Auto-refund if unit does not fill by deadline
                   </p>
                 </div>
               </div>
