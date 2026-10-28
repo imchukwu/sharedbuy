@@ -450,3 +450,147 @@ func (r *UnitRepository) JoinUnit(ctx context.Context, unitID, userID, userName,
 		JoinedAt:         time.Now(),
 	}, nil
 }
+
+func (r *UnitRepository) GetManagedUnits(ctx context.Context, managerID string) ([]domain.Unit, error) {
+	if r.db == nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		var res []domain.Unit
+		for _, u := range r.mockUnits {
+			if managerID == "" || u.ManagerID == managerID {
+				unitCopy := u
+				r.calculatePricingBreakdown(&unitCopy)
+				res = append(res, unitCopy)
+			}
+		}
+		return res, nil
+	}
+
+	filter := UnitFilter{}
+	units, err := r.ListUnits(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	var res []domain.Unit
+	for _, u := range units {
+		if managerID == "" || u.ManagerID == managerID {
+			res = append(res, u)
+		}
+	}
+	return res, nil
+}
+
+func (r *UnitRepository) VerifyCollectionCode(ctx context.Context, managerID, code string) (*domain.UnitMember, *domain.Unit, error) {
+	cleanCode := strings.TrimSpace(code)
+	if len(cleanCode) != 6 {
+		return nil, nil, errors.New("collection code must be exactly 6 digits")
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for unitID, members := range r.mockMembers {
+		// Find unit
+		var targetUnit *domain.Unit
+		for i := range r.mockUnits {
+			if r.mockUnits[i].ID == unitID {
+				targetUnit = &r.mockUnits[i]
+				break
+			}
+		}
+
+		if targetUnit == nil {
+			continue
+		}
+
+		// If managerID specified, check authorization (allow empty for admin)
+		if managerID != "" && targetUnit.ManagerID != managerID {
+			continue
+		}
+
+		for idx := range members {
+			if members[idx].CollectionCode == cleanCode {
+				m := &members[idx]
+				if m.CollectionStatus == domain.CollectionStatusCollected {
+					collectedDate := "earlier"
+					if m.CollectedAt != nil {
+						collectedDate = m.CollectedAt.Format("02 Jan 15:04")
+					}
+					return nil, nil, fmt.Errorf("collection code %s was already verified and collected on %s", cleanCode, collectedDate)
+				}
+
+				now := time.Now()
+				m.CollectionStatus = domain.CollectionStatusCollected
+				m.CollectedAt = &now
+
+				unitCopy := *targetUnit
+				r.calculatePricingBreakdown(&unitCopy)
+
+				return m, &unitCopy, nil
+			}
+		}
+	}
+
+	return nil, nil, errors.New("invalid collection code or code not found for your managed units")
+}
+
+func (r *UnitRepository) CreateUnit(ctx context.Context, u *domain.Unit) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if u.ID == "" {
+		u.ID = fmt.Sprintf("unit-piwoyi-%s-%d", strings.ToLower(u.ProductCategory), time.Now().Unix()%10000)
+	}
+
+	r.calculatePricingBreakdown(u)
+	u.CreatedAt = time.Now()
+	u.UpdatedAt = time.Now()
+	u.Status = domain.UnitStatusOpen
+	u.CurrentMembersCount = 0
+	u.CurrentSharesCount = 0
+
+	r.mockUnits = append([]domain.Unit{*u}, r.mockUnits...)
+	return nil
+}
+
+func (r *UnitRepository) CheckLifecycleAndExpire(
+	ctx context.Context,
+	refundFn func(userID string, amountKobo int64, reason, refID string) error,
+) (lockedCount int, refundedCount int, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	now := time.Now()
+
+	for i := range r.mockUnits {
+		u := &r.mockUnits[i]
+
+		// 1. Auto-Lock when unit reaches full capacity
+		if u.Status == domain.UnitStatusOpen && u.CurrentMembersCount >= u.MaxMembers {
+			u.Status = domain.UnitStatusFull
+			u.UpdatedAt = now
+			lockedCount++
+		}
+
+		// 2. Deadline Expiry & Auto-Refund
+		if u.Status == domain.UnitStatusOpen && now.After(u.PaymentDeadline) && u.CurrentMembersCount < u.MaxMembers {
+			u.Status = domain.UnitStatusExpired
+			u.UpdatedAt = now
+
+			members := r.mockMembers[u.ID]
+			for mIdx := range members {
+				m := &members[mIdx]
+				if m.PaymentStatus == domain.PaymentStatusPaid {
+					if refundFn != nil {
+						_ = refundFn(m.UserID, m.AmountPaidKobo, "UNIT_EXPIRED_REFUND: "+u.ProductName, u.ID)
+					}
+					m.PaymentStatus = domain.PaymentStatusRefunded
+					refundedCount++
+				}
+			}
+			u.Status = domain.UnitStatusRefunding
+		}
+	}
+
+	return lockedCount, refundedCount, nil
+}

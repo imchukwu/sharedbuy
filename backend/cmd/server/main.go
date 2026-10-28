@@ -45,11 +45,13 @@ func main() {
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
 	paymentService := service.NewPaymentService(unitRepo, userRepo, walletRepo, cfg.PaystackSecretKey, cfg.PaystackPublicKey)
 	walletService := service.NewWalletService(walletRepo, userRepo, unitRepo, cfg.PaystackSecretKey, cfg.PaystackPublicKey)
+	lifecycleService := service.NewLifecycleService(unitRepo, walletRepo)
+	defer lifecycleService.Stop()
 
 	// 4. Handlers
 	authHandler := handler.NewAuthHandler(authService, userRepo)
 	metaHandler := handler.NewMetaHandler(unitRepo)
-	unitHandler := handler.NewUnitHandler(unitRepo)
+	unitHandler := handler.NewUnitHandler(unitRepo, userRepo, lifecycleService)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
 	walletHandler := handler.NewWalletHandler(walletService)
 
@@ -87,6 +89,12 @@ func main() {
 		api.Get("/units", unitHandler.ListUnits)
 		api.Get("/units/{id}", unitHandler.GetUnit)
 		api.Get("/units/{id}/members", unitHandler.GetUnitMembers)
+		api.Group(func(authed chi.Router) {
+			authed.Use(middleware.RequireAuth)
+			authed.Use(middleware.RequireRole(domain.RoleUnitManager, domain.RoleAdmin))
+			authed.Post("/units", unitHandler.CreateUnit)
+			authed.Post("/units/lifecycle/check", unitHandler.RunLifecycleCheck)
+		})
 
 		// Payments & Paystack Checkout
 		api.Route("/payments", func(pay chi.Router) {
@@ -137,6 +145,8 @@ func main() {
 		api.Route("/manager", func(mgr chi.Router) {
 			mgr.Use(middleware.RequireAuth)
 			mgr.Use(middleware.RequireRole(domain.RoleUnitManager, domain.RoleAdmin))
+			mgr.Get("/units", unitHandler.GetManagedUnits)
+			mgr.Post("/units/verify-code", unitHandler.VerifyCollectionCode)
 			mgr.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(`{"message":"Welcome to Unit Manager Portal API"}`))
 			})
