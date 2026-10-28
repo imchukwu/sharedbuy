@@ -10,19 +10,15 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 -- 2. Areas
 INSERT INTO areas (id, name, city, state, is_active) VALUES
-('area-maiduguri', 'Customs & Post Office Hub', 'Maiduguri', 'Borno', TRUE),
-('area-kano', 'Fagge & Sabon Gari', 'Kano', 'Kano', TRUE),
-('area-lagos', 'Ikeja & Maryland Estate', 'Ikeja', 'Lagos', TRUE)
+('area-piwoyi-abuja', 'Piwoyi District Hub', 'Piwoyi, Abuja', 'FCT', TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- 3. Products
 INSERT INTO products (id, name, category, image_url, description, pack_size, unit_of_share, shares_per_pack, is_active) VALUES
-('prod-rice-50kg', 'Premium Long Grain Parboiled Rice', 'Grains', 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=400&q=80', 'Stone-free, polished Nigerian parboiled rice in standard bulk 50kg bag.', '50kg Bag', '5kg Share', 10, TRUE),
-('prod-beans-50kg', 'Honey Beans (Oloyin)', 'Legumes', 'https://images.unsplash.com/photo-1551462147-ff29053bfc14?auto=format&fit=crop&w=400&q=80', 'Sweet high-yield Nigerian honey beans, clean and insect-free.', '50kg Bag', '5kg Share', 10, TRUE),
-('prod-garri-50kg', 'Ijebu White Garri', 'Tubers', 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?auto=format&fit=crop&w=400&q=80', 'Crispy, dry and properly fermented premium Ijebu garri.', '50kg Bag', '5kg Share', 10, TRUE),
-('prod-oil-25l', 'King’s Pure Vegetable Cooking Oil', 'Oils', 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=400&q=80', 'Cholesterol-free, vitamin A fortified pure vegetable cooking oil in 25L jerrycan.', '25L Jerrycan', '5L Share', 5, TRUE),
-('prod-sugar-50kg', 'Golden Penny Refined Pure Sugar', 'Condiments', 'https://images.unsplash.com/photo-1612198188060-c7c2a3b66eae?auto=format&fit=crop&w=400&q=80', 'Clean granulated fortified white sugar directly from industrial millers.', '50kg Bag', '5kg Share', 10, TRUE),
-('prod-milk-carton', 'Peak Full Cream Evaporated Milk', 'Dairy', 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80', 'Full cream rich evaporated milk in standard carton containing 48 tins.', 'Carton of 48', '6 Tins Share', 8, TRUE)
+('prod-rice-mama-gold-50kg', 'Mama Gold Premium Long Grain Parboiled Rice', 'Grains', 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=400&q=80', 'Stone-free, polished Nigerian parboiled rice in standard bulk 50kg bag.', '50kg Bag', '5kg Share', 10, TRUE),
+('prod-lactorich-milk-25kg', 'Lactorich Instant Full Cream Powdered Milk', 'Dairy', 'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80', 'Rich, creamy full-cream instant milk powder in commercial wholesale 25kg bag.', '25kg Bag', '2.5kg Share', 10, TRUE),
+('prod-crayfish-bag', 'Oron Premium Dried Crayfish', 'Seafood & Seasonings', 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?auto=format&fit=crop&w=400&q=80', 'Crisp, sweet, sand-free dried red crayfish sourced directly from coastal landing jetties.', 'Large Sack (Bag)', 'Paint Bucket Share (~2kg)', 8, TRUE),
+('prod-palm-oil-25l', 'Direct Mill Pure Red Palm Oil', 'Oils', 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=400&q=80', '100% pure, unadulterated first-press red palm oil in 25-liter gallon direct from palm processing mills.', '25L Gallon', '5L Share', 5, TRUE)
 ON CONFLICT (id) DO NOTHING;
 
 -- 4. Suppliers

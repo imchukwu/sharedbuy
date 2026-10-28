@@ -3,7 +3,8 @@ import { formatKobo, formatDate } from '../../utils/formatters';
 import {
   MapPin,
   Clock,
-  Phone
+  Phone,
+  Navigation
 } from 'lucide-react';
 
 export const MyUnitsPage: React.FC = () => {
@@ -12,28 +13,30 @@ export const MyUnitsPage: React.FC = () => {
   // Sample units for member
   const sampleActiveUnits = [
     {
-      id: 'unit-rice-maiduguri-02',
-      product_name: 'Premium Long Grain Parboiled Rice',
+      id: 'unit-piwoyi-rice-01',
+      product_name: 'Mama Gold Premium Long Grain Parboiled Rice',
       share_size: '5kg share (1 share)',
-      amount_paid_kobo: 982500,
+      amount_paid_kobo: 875000,
       status: 'READY_FOR_COLLECTION',
       collection_code: '840192',
-      manager_name: 'Fatima Mohammed',
-      manager_phone: '+2348044445555',
-      collection_address: 'No. 3 Airport Road, Bulumkutu, Maiduguri (Behind Federal High Court)',
-      sharing_date: '2026-10-27T10:00:00Z',
-    },
-    {
-      id: 'unit-rice-maiduguri-01',
-      product_name: 'Premium Long Grain Parboiled Rice',
-      share_size: '5kg share (1 share)',
-      amount_paid_kobo: 982500,
-      status: 'OPEN',
-      collection_code: '384912',
       manager_name: 'Aisha Bello',
       manager_phone: '+2348011112222',
-      collection_address: 'Shop 14, Opposite Post Office Roundabout, Maiduguri',
-      sharing_date: '2026-10-30T10:00:00Z',
+      collection_address: '16 Biana street, New Extension, Piwoyi, Abuja',
+      collection_map_url: 'https://www.google.com/maps/search/?api=1&query=16+Biana+street+New+Extension+Piwoyi+Abuja',
+      sharing_date: '2026-10-28T10:00:00Z',
+    },
+    {
+      id: 'unit-piwoyi-milk-02',
+      product_name: 'Lactorich Instant Full Cream Powdered Milk',
+      share_size: '2.5kg share (1 share)',
+      amount_paid_kobo: 920000,
+      status: 'OPEN',
+      collection_code: '384912',
+      manager_name: 'Fatima Mohammed',
+      manager_phone: '+2348044445555',
+      collection_address: 'Behind Salam Salam, Piwoyi, Abuja',
+      collection_map_url: 'https://www.google.com/maps/search/?api=1&query=Behind+Salam+Salam+Piwoyi+Abuja',
+      sharing_date: '2026-10-31T10:00:00Z',
     },
   ];
 
@@ -185,12 +188,22 @@ export const MyUnitsPage: React.FC = () => {
                     <div className="flex items-center gap-1 text-gray-500">
                       <Clock size={12} /> Sharing Day: <strong>{formatDate(item.sharing_date)}</strong>
                     </div>
-                    <a
-                      href={`tel:${item.manager_phone}`}
-                      className="font-medium text-emerald-800 flex items-center gap-1 hover:underline"
-                    >
-                      <Phone size={11} /> Call Manager
-                    </a>
+                    <div className="flex items-center gap-2.5">
+                      <a
+                        href={item.collection_map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.collection_address)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-emerald-800 flex items-center gap-1 hover:underline"
+                      >
+                        <Navigation size={11} /> Map
+                      </a>
+                      <a
+                        href={`tel:${item.manager_phone}`}
+                        className="font-medium text-emerald-800 flex items-center gap-1 hover:underline"
+                      >
+                        <Phone size={11} /> Call Manager
+                      </a>
+                    </div>
                   </div>
                 </div>
               </div>

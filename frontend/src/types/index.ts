@@ -70,6 +70,7 @@ export interface Unit {
   area_state: string;
   collection_address: string;
   collection_landmark: string;
+  collection_map_url?: string;
   total_packs: number;
   share_size: string;
   max_members: number;

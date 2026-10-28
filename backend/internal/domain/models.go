@@ -127,6 +127,7 @@ type Unit struct {
 	AreaState              string     `json:"area_state,omitempty"`
 	CollectionAddress      string     `json:"collection_address"`
 	CollectionLandmark     string     `json:"collection_landmark"`
+	CollectionMapURL       string     `json:"collection_map_url,omitempty"`
 	TotalPacks             int        `json:"total_packs"`
 	ShareSize              string     `json:"share_size"`
 	MaxMembers             int        `json:"max_members"`

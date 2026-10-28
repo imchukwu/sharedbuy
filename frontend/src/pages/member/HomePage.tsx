@@ -9,7 +9,9 @@ import {
   ArrowRight,
   CheckCircle,
   Share2,
-  AlertCircle
+  AlertCircle,
+  ExternalLink,
+  Navigation
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AuthModal } from '../../components/auth/AuthModal';
@@ -282,11 +284,21 @@ export const HomePage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Manager and Landmark Info */}
-                  <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500 pt-2 border-t border-gray-50">
-                    <div className="flex items-center gap-1 truncate max-w-[200px]">
-                      <MapPin size={12} className="text-gray-400 shrink-0" />
-                      <span className="truncate">{unit.collection_landmark}, {unit.area_city}</span>
+                  {/* Manager and Landmark Info with Map Link */}
+                  <div className="mt-3 flex items-center justify-between text-[11px] text-gray-500 pt-2 border-t border-gray-50 gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <MapPin size={12} className="text-emerald-700 shrink-0" />
+                      <span className="truncate font-medium text-gray-700">{unit.collection_landmark}</span>
+                      <a
+                        href={unit.collection_map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(unit.collection_address)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors shrink-0 border border-emerald-200/60"
+                        title="Open pickup point in Google Maps"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Map <ExternalLink size={9} />
+                      </a>
                     </div>
                     <div className="font-medium text-gray-600 shrink-0">
                       Mgr: <strong className="text-gray-800">{unit.manager_name.split(' ')[0]}</strong> ({unit.manager_rating}★)
@@ -335,9 +347,18 @@ export const HomePage: React.FC = () => {
                 <h3 className="text-base font-bold text-gray-900 mt-1">
                   {selectedUnit.product_name} ({selectedUnit.share_size})
                 </h3>
-                <p className="text-xs text-gray-500">
-                  Collection Hub: {selectedUnit.collection_address}
-                </p>
+                <div className="flex items-center gap-1.5 mt-1 text-xs text-gray-600">
+                  <MapPin size={13} className="text-emerald-700 shrink-0" />
+                  <span className="truncate">{selectedUnit.collection_address}</span>
+                  <a
+                    href={selectedUnit.collection_map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedUnit.collection_address)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 shrink-0 ml-1"
+                  >
+                    View Map <ExternalLink size={9} />
+                  </a>
+                </div>
               </div>
               <button
                 onClick={() => { setSelectedUnit(null); setJoinedSuccess(false); }}
@@ -422,6 +443,30 @@ export const HomePage: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500">Payment Deadline</span>
                     <span className="font-medium text-gray-800">{formatDate(selectedUnit.payment_deadline)}</span>
+                  </div>
+                </div>
+
+                {/* Pickup Hub & Maps Directions */}
+                <div className="bg-emerald-50/70 p-3.5 rounded-xl border border-emerald-200 text-xs space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-emerald-950 flex items-center gap-1.5">
+                        <MapPin size={13} className="text-emerald-700 shrink-0" />
+                        <span>Pickup Hub: {selectedUnit.collection_landmark}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-600 leading-snug">
+                        {selectedUnit.collection_address}
+                      </p>
+                    </div>
+                    <a
+                      href={selectedUnit.collection_map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedUnit.collection_address)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shrink-0 shadow-2xs transition-colors"
+                    >
+                      <Navigation size={13} />
+                      <span>Map Directions</span>
+                    </a>
                   </div>
                 </div>
 
