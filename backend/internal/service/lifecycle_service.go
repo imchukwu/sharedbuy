@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -103,5 +104,5 @@ func (s *LifecycleService) RunCheck(ctx context.Context) (*LifecycleReport, erro
 }
 
 func fmtMsg(locked, refunded int) string {
-	return "Units checked: " + string(rune('0'+locked)) + " locked, " + string(rune('0'+refunded)) + " refunded."
+	return fmt.Sprintf("Units checked: %d locked, %d refunded.", locked, refunded)
 }

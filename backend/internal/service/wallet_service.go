@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +25,10 @@ type WalletService struct {
 	unitRepo          *repository.UnitRepository
 	paystackSecretKey string
 	paystackPublicKey string
+	isDev             bool
+	pendingTopUps     map[string]int64
+	fulfilledTopUps   map[string]int64
+	mu                sync.RWMutex
 }
 
 func NewWalletService(
@@ -38,7 +43,14 @@ func NewWalletService(
 		unitRepo:          unitRepo,
 		paystackSecretKey: paystackSecretKey,
 		paystackPublicKey: paystackPublicKey,
+		isDev:             false,
+		pendingTopUps:     make(map[string]int64),
+		fulfilledTopUps:   make(map[string]int64),
 	}
+}
+
+func (s *WalletService) SetDevelopmentMode(isDev bool) {
+	s.isDev = isDev
 }
 
 type InitializeTopUpResponse struct {
@@ -80,6 +92,22 @@ func (s *WalletService) InitializeTopUp(ctx context.Context, userID string, amou
 	}
 
 	reference := fmt.Sprintf("wtop_%d_%s", time.Now().Unix(), uuid.New().String()[:6])
+
+	s.mu.Lock()
+	s.pendingTopUps[reference] = amountKobo
+	s.mu.Unlock()
+
+	if s.walletRepo != nil {
+		_ = s.walletRepo.SavePaymentRecord(ctx, repository.PaymentRecord{
+			UserID:     userID,
+			UserName:   user.FullName,
+			UserPhone:  user.Phone,
+			ActionType: "WALLET_TOPUP",
+			AmountKobo: amountKobo,
+			GatewayRef: reference,
+			Status:     "INITIALIZED",
+		})
+	}
 
 	// If Paystack live/test key is set, call Paystack initialize
 	if s.paystackSecretKey != "" && !strings.Contains(s.paystackSecretKey, "placeholder") {
@@ -152,38 +180,114 @@ func (s *WalletService) VerifyTopUp(ctx context.Context, userID, reference strin
 		return nil, errors.New("reference is required")
 	}
 
-	var amountKobo int64 = 500000 // default mock fallback (₦5,000)
+	s.mu.RLock()
+	if prevBalance, done := s.fulfilledTopUps[reference]; done {
+		amt := s.pendingTopUps[reference]
+		s.mu.RUnlock()
+		return &TopUpVerifyResult{
+			Status:         "SUCCESS",
+			Reference:      reference,
+			AmountKobo:     amt,
+			NewBalanceKobo: prevBalance,
+		}, nil
+	}
+	amountKobo, ok := s.pendingTopUps[reference]
+	s.mu.RUnlock()
 
-	// If using live Paystack API
-	if s.paystackSecretKey != "" && !strings.Contains(s.paystackSecretKey, "placeholder") {
-		req, err := http.NewRequestWithContext(ctx, "GET", "https://api.paystack.co/transaction/verify/"+reference, nil)
-		if err == nil {
-			req.Header.Set("Authorization", "Bearer "+s.paystackSecretKey)
-			client := &http.Client{Timeout: 10 * time.Second}
-			resp, err := client.Do(req)
-			if err == nil && resp.StatusCode == http.StatusOK {
-				defer resp.Body.Close()
-				var psResp struct {
-					Status  bool `json:"status"`
-					Data    struct {
-						Status   string `json:"status"`
-						Amount   int64  `json:"amount"`
-						Currency string `json:"currency"`
-					} `json:"data"`
+	if !ok && s.walletRepo != nil {
+		if dbRec, err := s.walletRepo.GetPaymentRecordByRef(ctx, reference); err == nil && dbRec != nil {
+			amountKobo = dbRec.AmountKobo
+			if userID == "" {
+				userID = dbRec.UserID
+			}
+			ok = true
+			if dbRec.Status == "SUCCESS" {
+				summary, _ := s.walletRepo.GetWalletSummary(ctx, userID)
+				var bal int64
+				if summary != nil {
+					bal = summary.BalanceKobo
 				}
-				body, _ := io.ReadAll(resp.Body)
-				_ = json.Unmarshal(body, &psResp)
-				if psResp.Status && psResp.Data.Status == "success" {
-					amountKobo = psResp.Data.Amount
-				}
+				return &TopUpVerifyResult{
+					Status:         "SUCCESS",
+					Reference:      reference,
+					AmountKobo:     amountKobo,
+					NewBalanceKobo: bal,
+				}, nil
 			}
 		}
+	}
+
+	if !ok || amountKobo <= 0 {
+		if !s.isDev {
+			return nil, errors.New("top-up payment reference not found or invalid")
+		}
+		amountKobo = 500000 // default mock fallback (₦5,000) only in dev mode
+	}
+
+	// If using live Paystack API, enforce strict verification
+	if s.paystackSecretKey != "" && !strings.Contains(s.paystackSecretKey, "placeholder") && s.paystackSecretKey != "mock" {
+		req, err := http.NewRequestWithContext(ctx, "GET", "https://api.paystack.co/transaction/verify/"+reference, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+s.paystackSecretKey)
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("paystack top-up verification failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		var psResp struct {
+			Status  bool   `json:"status"`
+			Message string `json:"message"`
+			Data    struct {
+				Status   string `json:"status"`
+				Amount   int64  `json:"amount"`
+				Currency string `json:"currency"`
+				Metadata struct {
+					UserID string `json:"user_id"`
+				} `json:"metadata"`
+			} `json:"data"`
+		}
+		body, _ := io.ReadAll(resp.Body)
+		if err := json.Unmarshal(body, &psResp); err != nil {
+			return nil, err
+		}
+		if !psResp.Status || psResp.Data.Status != "success" {
+			return nil, fmt.Errorf("paystack top-up not successful (status: %s)", psResp.Data.Status)
+		}
+		if psResp.Data.Currency != "NGN" {
+			return nil, errors.New("invalid top-up currency")
+		}
+		amountKobo = psResp.Data.Amount
+		if userID == "" && psResp.Data.Metadata.UserID != "" {
+			userID = psResp.Data.Metadata.UserID
+		}
+	}
+
+	if userID == "" {
+		return nil, errors.New("unable to determine user for wallet top-up")
 	}
 
 	// Credit wallet
 	newBalance, err := s.walletRepo.Credit(ctx, userID, amountKobo, "WALLET_TOPUP: Account funded via Paystack", reference)
 	if err != nil {
 		return nil, fmt.Errorf("failed to credit wallet: %w", err)
+	}
+
+	s.mu.Lock()
+	s.fulfilledTopUps[reference] = newBalance
+	s.mu.Unlock()
+
+	if s.walletRepo != nil {
+		_ = s.walletRepo.SavePaymentRecord(ctx, repository.PaymentRecord{
+			UserID:     userID,
+			ActionType: "WALLET_TOPUP",
+			AmountKobo: amountKobo,
+			GatewayRef: reference,
+			Status:     "SUCCESS",
+		})
 	}
 
 	return &TopUpVerifyResult{
@@ -210,7 +314,157 @@ func (s *WalletService) RequestWithdrawal(ctx context.Context, userID string, am
 		AccountName:   accountName,
 	}
 
-	return s.walletRepo.CreateWithdrawal(ctx, req)
+	wdr, err := s.walletRepo.CreateWithdrawal(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// If live Paystack Secret Key is configured, initiate Paystack Transfer Recipient & Transfer
+	if s.paystackSecretKey != "" && !strings.Contains(s.paystackSecretKey, "placeholder") && s.paystackSecretKey != "mock" {
+		bankCode := resolveCBNBankCode(bankName)
+		if bankCode != "" {
+			if err := s.initiatePaystackTransfer(ctx, wdr.ID, amountKobo, bankCode, accountNumber, accountName); err != nil {
+				// Mark PENDING for Admin Finance manual approval if automated transfer is not enabled on the Paystack business account
+				_, _ = s.walletRepo.UpdateWithdrawalStatus(ctx, wdr.ID, "PENDING")
+				wdr.Status = "PENDING"
+			}
+		}
+	}
+
+	return wdr, nil
+}
+
+func resolveCBNBankCode(bankName string) string {
+	switch strings.ToLower(strings.TrimSpace(bankName)) {
+	case "gtbank", "guaranty trust bank", "guaranty trust bank (gtbank)":
+		return "058"
+	case "access bank":
+		return "044"
+	case "first bank", "first bank of nigeria":
+		return "011"
+	case "zenith bank":
+		return "057"
+	case "opay":
+		return "999992"
+	case "palmpay":
+		return "999991"
+	case "kuda bank", "kuda microfinance bank":
+		return "50211"
+	case "united bank for africa", "uba":
+		return "033"
+	default:
+		return "058"
+	}
+}
+
+func (s *WalletService) ResolveBankAccount(ctx context.Context, userID, bankName, accountNumber string) (string, string, error) {
+	cleanAcct := strings.TrimSpace(accountNumber)
+	if len(cleanAcct) != 10 {
+		return "", "", errors.New("account number must be 10 digits (NUBAN)")
+	}
+	bankCode := resolveCBNBankCode(bankName)
+
+	// Live Paystack NUBAN Resolution API
+	if s.paystackSecretKey != "" && !strings.Contains(s.paystackSecretKey, "placeholder") && s.paystackSecretKey != "mock" {
+		url := fmt.Sprintf("https://api.paystack.co/bank/resolve?account_number=%s&bank_code=%s", cleanAcct, bankCode)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err == nil {
+			req.Header.Set("Authorization", "Bearer "+s.paystackSecretKey)
+			client := &http.Client{Timeout: 8 * time.Second}
+			resp, err := client.Do(req)
+			if err == nil {
+				defer resp.Body.Close()
+				var psResp struct {
+					Status  bool   `json:"status"`
+					Message string `json:"message"`
+					Data    struct {
+						AccountNumber string `json:"account_number"`
+						AccountName   string `json:"account_name"`
+					} `json:"data"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&psResp) == nil && psResp.Status && psResp.Data.AccountName != "" {
+					return psResp.Data.AccountName, bankCode, nil
+				}
+			}
+		}
+	}
+
+	// Fallback NUBAN resolution in dev/sandbox mode
+	user, _ := s.userRepo.GetByID(ctx, userID)
+	holder := "VERIFIED NUBAN HOLDER"
+	if user != nil && user.FullName != "" {
+		holder = strings.ToUpper(user.FullName)
+	}
+	return holder, bankCode, nil
+}
+
+func (s *WalletService) initiatePaystackTransfer(ctx context.Context, reference string, amountKobo int64, bankCode, accountNumber, accountName string) error {
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	// 1. Create Transfer Recipient
+	recPayload, _ := json.Marshal(map[string]interface{}{
+		"type":           "nuban",
+		"name":           accountName,
+		"account_number": accountNumber,
+		"bank_code":      bankCode,
+		"currency":       "NGN",
+	})
+	recReq, err := http.NewRequestWithContext(ctx, "POST", "https://api.paystack.co/transferrecipient", bytes.NewBuffer(recPayload))
+	if err != nil {
+		return err
+	}
+	recReq.Header.Set("Authorization", "Bearer "+s.paystackSecretKey)
+	recReq.Header.Set("Content-Type", "application/json")
+
+	recResp, err := client.Do(recReq)
+	if err != nil {
+		return err
+	}
+	defer recResp.Body.Close()
+
+	var recData struct {
+		Status bool `json:"status"`
+		Data   struct {
+			RecipientCode string `json:"recipient_code"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(recResp.Body).Decode(&recData); err != nil || !recData.Status || recData.Data.RecipientCode == "" {
+		return errors.New("failed to create paystack transfer recipient")
+	}
+
+	// 2. Initiate Transfer
+	tfPayload, _ := json.Marshal(map[string]interface{}{
+		"source":    "balance",
+		"amount":    amountKobo,
+		"recipient": recData.Data.RecipientCode,
+		"reason":    "SharedBuy Wallet Withdrawal " + reference,
+		"reference": reference,
+	})
+	tfReq, err := http.NewRequestWithContext(ctx, "POST", "https://api.paystack.co/transfer", bytes.NewBuffer(tfPayload))
+	if err != nil {
+		return err
+	}
+	tfReq.Header.Set("Authorization", "Bearer "+s.paystackSecretKey)
+	tfReq.Header.Set("Content-Type", "application/json")
+
+	tfResp, err := client.Do(tfReq)
+	if err != nil {
+		return err
+	}
+	defer tfResp.Body.Close()
+
+	if tfResp.StatusCode != http.StatusOK {
+		return fmt.Errorf("paystack transfer returned status %d", tfResp.StatusCode)
+	}
+	return nil
+}
+
+func (s *WalletService) ListWithdrawals(ctx context.Context) ([]domain.WithdrawalRequest, error) {
+	return s.walletRepo.ListWithdrawals(ctx)
+}
+
+func (s *WalletService) ProcessWithdrawal(ctx context.Context, withdrawalID, status string) (*domain.WithdrawalRequest, error) {
+	return s.walletRepo.UpdateWithdrawalStatus(ctx, withdrawalID, status)
 }
 
 func (s *WalletService) PayUnitWithWallet(ctx context.Context, unitID, userID string, sharesCount int) (*PayWithWalletResult, error) {

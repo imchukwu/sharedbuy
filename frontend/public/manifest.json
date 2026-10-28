@@ -1,0 +1,53 @@
+{
+  "name": "SharedBuy — Community Wholesale Buying",
+  "short_name": "SharedBuy",
+  "description": "Collectively buy bulk rice, milk, crayfish & palm oil at wholesale prices with neighbors in Piwoyi, Lugbe & across Nigeria.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8faf8",
+  "theme_color": "#065f46",
+  "categories": ["shopping", "food", "finance"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Browse Piwoyi Units",
+      "short_name": "Units",
+      "description": "Join open group buying units in Piwoyi & Abuja",
+      "url": "/"
+    },
+    {
+      "name": "My Pickup Codes",
+      "short_name": "Pickup Codes",
+      "description": "View your 6-digit collection codes",
+      "url": "/my-units"
+    },
+    {
+      "name": "Coordinator Hub",
+      "short_name": "Hub Portal",
+      "description": "Verify neighbor pickup codes and weigh bulk deliveries",
+      "url": "/manager"
+    }
+  ]
+}
+

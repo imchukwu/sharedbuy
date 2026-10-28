@@ -65,28 +65,30 @@ export const RouteGuard: React.FC<RouteGuardProps> = ({ requiredRole, children }
           {roleDesc}
         </p>
 
-        {/* 1-Tap Quick Demo Switcher */}
+        {/* Portal Sign-In & Dev-Only Quick Switcher */}
         <div className="space-y-3">
-          <button
-            onClick={() => loginAsDemoRole(requiredRole)}
-            className={`w-full py-3 px-4 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 text-white shadow-md transition-all ${demoButtonColor}`}
-          >
-            {requiredRole === 'ADMIN' ? (
-              <Shield size={16} />
-            ) : requiredRole === 'DISTRIBUTOR' ? (
-              <UserCheck size={16} />
-            ) : (
-              <UserCheck size={16} />
-            )}
-            <span>{demoButtonText}</span>
-            <ArrowRight size={14} />
-          </button>
+          {import.meta.env.DEV && (
+            <button
+              onClick={() => loginAsDemoRole(requiredRole)}
+              className={`w-full py-3 px-4 rounded-xl font-semibold text-xs flex items-center justify-center gap-2 text-white shadow-md transition-all cursor-pointer ${demoButtonColor}`}
+            >
+              {requiredRole === 'ADMIN' ? (
+                <Shield size={16} />
+              ) : requiredRole === 'DISTRIBUTOR' ? (
+                <UserCheck size={16} />
+              ) : (
+                <UserCheck size={16} />
+              )}
+              <span>{demoButtonText}</span>
+              <ArrowRight size={14} />
+            </button>
+          )}
 
           <button
             onClick={() => setModalOpen(true)}
-            className="w-full py-2.5 px-4 rounded-xl font-medium text-xs text-gray-700 hover:bg-gray-100 border border-gray-200 transition-colors"
+            className="w-full py-2.5 px-4 rounded-xl font-medium text-xs text-gray-700 hover:bg-gray-100 border border-gray-200 transition-colors cursor-pointer"
           >
-            Sign In with different credentials
+            Sign In with authorized credentials
           </button>
         </div>
       </div>

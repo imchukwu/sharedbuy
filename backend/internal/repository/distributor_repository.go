@@ -127,22 +127,50 @@ func NewDistributorRepository(db *sql.DB) *DistributorRepository {
 }
 
 func (r *DistributorRepository) ListCommodities(ctx context.Context, distributorID string) ([]domain.DistributorCommodity, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	if r.db == nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+
+		var result []domain.DistributorCommodity
+		for _, c := range r.commodities {
+			if distributorID == "" || c.DistributorID == distributorID {
+				result = append(result, c)
+			}
+		}
+		return result, nil
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, COALESCE(distributor_id, ''), distributor_name, distributor_phone,
+		       COALESCE(product_id, ''), product_name, category, pack_size,
+		       price_per_pack_kobo, delivery_fee_kobo, min_order_packs, available_packs,
+		       warehouse_location, status, updated_at
+		FROM distributor_commodities
+		WHERE ($1 = '' OR distributor_id = $1)
+		ORDER BY updated_at DESC
+	`, distributorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
 	var result []domain.DistributorCommodity
-	for _, c := range r.commodities {
-		if distributorID == "" || c.DistributorID == distributorID {
-			result = append(result, c)
+	for rows.Next() {
+		var c domain.DistributorCommodity
+		if err := rows.Scan(
+			&c.ID, &c.DistributorID, &c.DistributorName, &c.DistributorPhone,
+			&c.ProductID, &c.ProductName, &c.Category, &c.PackSize,
+			&c.PricePerPackKobo, &c.DeliveryFeeKobo, &c.MinOrderPacks, &c.AvailablePacks,
+			&c.WarehouseLocation, &c.Status, &c.UpdatedAt,
+		); err != nil {
+			return nil, err
 		}
+		result = append(result, c)
 	}
 	return result, nil
 }
 
 func (r *DistributorRepository) CreateCommodity(ctx context.Context, comm *domain.DistributorCommodity) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	if comm.ID == "" {
 		comm.ID = fmt.Sprintf("comm-%d", time.Now().UnixNano()%1000000)
 	}
@@ -151,90 +179,212 @@ func (r *DistributorRepository) CreateCommodity(ctx context.Context, comm *domai
 		comm.Status = "ACTIVE"
 	}
 
-	r.commodities = append([]domain.DistributorCommodity{*comm}, r.commodities...)
-	return nil
+	if r.db == nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.commodities = append([]domain.DistributorCommodity{*comm}, r.commodities...)
+		return nil
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO distributor_commodities (
+			id, distributor_id, distributor_name, distributor_phone,
+			product_id, product_name, category, pack_size,
+			price_per_pack_kobo, delivery_fee_kobo, min_order_packs, available_packs,
+			warehouse_location, status, updated_at
+		) VALUES ($1, NULLIF($2, ''), $3, $4, NULLIF($5, ''), $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+	`, comm.ID, comm.DistributorID, comm.DistributorName, comm.DistributorPhone,
+		comm.ProductID, comm.ProductName, comm.Category, comm.PackSize,
+		comm.PricePerPackKobo, comm.DeliveryFeeKobo, comm.MinOrderPacks, comm.AvailablePacks,
+		comm.WarehouseLocation, comm.Status)
+	return err
 }
 
 func (r *DistributorRepository) UpdateCommodity(ctx context.Context, comm *domain.DistributorCommodity) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	if r.db == nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
 
-	for i := range r.commodities {
-		if r.commodities[i].ID == comm.ID {
-			comm.UpdatedAt = time.Now()
-			r.commodities[i] = *comm
-			return nil
+		for i := range r.commodities {
+			if r.commodities[i].ID == comm.ID {
+				comm.UpdatedAt = time.Now()
+				r.commodities[i] = *comm
+				return nil
+			}
 		}
+		return errors.New("commodity quote not found")
 	}
-	return errors.New("commodity quote not found")
+
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE distributor_commodities
+		SET product_name = $1, category = $2, pack_size = $3,
+		    price_per_pack_kobo = $4, delivery_fee_kobo = $5, min_order_packs = $6,
+		    available_packs = $7, warehouse_location = $8, status = $9, updated_at = NOW()
+		WHERE id = $10
+	`, comm.ProductName, comm.Category, comm.PackSize,
+		comm.PricePerPackKobo, comm.DeliveryFeeKobo, comm.MinOrderPacks,
+		comm.AvailablePacks, comm.WarehouseLocation, comm.Status, comm.ID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("commodity quote not found")
+	}
+	return nil
 }
 
 func (r *DistributorRepository) ListPurchaseOrders(ctx context.Context, distributorID string) ([]domain.PurchaseOrder, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	if r.db == nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+
+		var result []domain.PurchaseOrder
+		for _, o := range r.orders {
+			if distributorID == "" || o.DistributorID == distributorID {
+				result = append(result, o)
+			}
+		}
+		return result, nil
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, order_number, COALESCE(distributor_id, ''), distributor_name, distributor_phone,
+		       COALESCE(created_by_admin_id, ''), destination_area, total_packs,
+		       total_goods_cost_kobo, total_delivery_fee_kobo, total_amount_kobo,
+		       status, driver_name, driver_phone, vehicle_plate, waybill_number,
+		       COALESCE(notes, ''), ordered_at, dispatched_at, delivered_at
+		FROM purchase_orders
+		WHERE ($1 = '' OR distributor_id = $1)
+		ORDER BY ordered_at DESC
+	`, distributorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
 	var result []domain.PurchaseOrder
-	for _, o := range r.orders {
-		if distributorID == "" || o.DistributorID == distributorID {
-			result = append(result, o)
+	for rows.Next() {
+		var o domain.PurchaseOrder
+		if err := rows.Scan(
+			&o.ID, &o.OrderNumber, &o.DistributorID, &o.DistributorName, &o.DistributorPhone,
+			&o.CreatedByAdminID, &o.DestinationArea, &o.TotalPacks,
+			&o.TotalGoodsCostKobo, &o.TotalDeliveryFeeKobo, &o.TotalAmountKobo,
+			&o.Status, &o.DriverName, &o.DriverPhone, &o.VehiclePlate, &o.WaybillNumber,
+			&o.Notes, &o.OrderedAt, &o.DispatchedAt, &o.DeliveredAt,
+		); err != nil {
+			return nil, err
 		}
+		result = append(result, o)
 	}
 	return result, nil
 }
 
 func (r *DistributorRepository) CreatePurchaseOrder(ctx context.Context, po *domain.PurchaseOrder) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	if po.ID == "" {
 		po.ID = fmt.Sprintf("po-%d", time.Now().UnixNano()%1000000)
 	}
 	if po.OrderNumber == "" {
-		po.OrderNumber = fmt.Sprintf("PO-2026-PIWOYI-%03d", len(r.orders)+1)
+		po.OrderNumber = fmt.Sprintf("PO-2026-PIWOYI-%03d", time.Now().Unix()%1000)
 	}
 	po.OrderedAt = time.Now()
 	if po.Status == "" {
 		po.Status = "PENDING"
 	}
 
-	r.orders = append([]domain.PurchaseOrder{*po}, r.orders...)
-	return nil
+	if r.db == nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		r.orders = append([]domain.PurchaseOrder{*po}, r.orders...)
+		return nil
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO purchase_orders (
+			id, order_number, distributor_id, distributor_name, distributor_phone,
+			created_by_admin_id, destination_area, total_packs,
+			total_goods_cost_kobo, total_delivery_fee_kobo, total_amount_kobo,
+			status, notes, ordered_at
+		) VALUES ($1, $2, NULLIF($3, ''), $4, $5, NULLIF($6, ''), $7, $8, $9, $10, $11, $12, $13, NOW())
+	`, po.ID, po.OrderNumber, po.DistributorID, po.DistributorName, po.DistributorPhone,
+		po.CreatedByAdminID, po.DestinationArea, po.TotalPacks,
+		po.TotalGoodsCostKobo, po.TotalDeliveryFeeKobo, po.TotalAmountKobo,
+		po.Status, po.Notes)
+	return err
 }
 
 func (r *DistributorRepository) DispatchPurchaseOrder(
 	ctx context.Context,
 	poID, driverName, driverPhone, vehiclePlate, waybillNumber string,
 ) (*domain.PurchaseOrder, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	if r.db == nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
 
-	now := time.Now()
-	for i := range r.orders {
-		if r.orders[i].ID == poID {
-			r.orders[i].Status = "DISPATCHED"
-			r.orders[i].DriverName = &driverName
-			r.orders[i].DriverPhone = &driverPhone
-			r.orders[i].VehiclePlate = &vehiclePlate
-			r.orders[i].WaybillNumber = &waybillNumber
-			r.orders[i].DispatchedAt = &now
-			orderCopy := r.orders[i]
-			return &orderCopy, nil
+		now := time.Now()
+		for i := range r.orders {
+			if r.orders[i].ID == poID {
+				r.orders[i].Status = "DISPATCHED"
+				r.orders[i].DriverName = &driverName
+				r.orders[i].DriverPhone = &driverPhone
+				r.orders[i].VehiclePlate = &vehiclePlate
+				r.orders[i].WaybillNumber = &waybillNumber
+				r.orders[i].DispatchedAt = &now
+				orderCopy := r.orders[i]
+				return &orderCopy, nil
+			}
+		}
+		return nil, errors.New("purchase order not found")
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE purchase_orders
+		SET status = 'DISPATCHED', driver_name = $1, driver_phone = $2,
+		    vehicle_plate = $3, waybill_number = $4, dispatched_at = NOW()
+		WHERE id = $5
+	`, driverName, driverPhone, vehiclePlate, waybillNumber, poID)
+	if err != nil {
+		return nil, err
+	}
+	orders, _ := r.ListPurchaseOrders(ctx, "")
+	for _, o := range orders {
+		if o.ID == poID {
+			oCopy := o
+			return &oCopy, nil
 		}
 	}
 	return nil, errors.New("purchase order not found")
 }
 
 func (r *DistributorRepository) MarkOrderDelivered(ctx context.Context, poID string) (*domain.PurchaseOrder, []string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	if r.db == nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
 
-	now := time.Now()
-	for i := range r.orders {
-		if r.orders[i].ID == poID {
-			r.orders[i].Status = "DELIVERED"
-			r.orders[i].DeliveredAt = &now
-			orderCopy := r.orders[i]
-			return &orderCopy, r.orders[i].AssociatedUnitIDs, nil
+		now := time.Now()
+		for i := range r.orders {
+			if r.orders[i].ID == poID {
+				r.orders[i].Status = "DELIVERED"
+				r.orders[i].DeliveredAt = &now
+				orderCopy := r.orders[i]
+				return &orderCopy, r.orders[i].AssociatedUnitIDs, nil
+			}
+		}
+		return nil, nil, errors.New("purchase order not found")
+	}
+
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE purchase_orders
+		SET status = 'DELIVERED', delivered_at = NOW()
+		WHERE id = $1
+	`, poID)
+	if err != nil {
+		return nil, nil, err
+	}
+	orders, _ := r.ListPurchaseOrders(ctx, "")
+	for _, o := range orders {
+		if o.ID == poID {
+			oCopy := o
+			return &oCopy, oCopy.AssociatedUnitIDs, nil
 		}
 	}
 	return nil, nil, errors.New("purchase order not found")

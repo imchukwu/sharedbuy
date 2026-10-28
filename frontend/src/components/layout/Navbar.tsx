@@ -1,14 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { RoleSwitcher } from '../common/RoleSwitcher';
 import { AuthModal } from '../auth/AuthModal';
-import { ShoppingBag, LogIn } from 'lucide-react';
+import { ShoppingBag, LogIn, WifiOff } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 
 export const Navbar: React.FC = () => {
   const { user } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const location = useLocation();
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const isManagerRoute = location.pathname.startsWith('/manager');
   const isDistributorRoute = location.pathname.startsWith('/distributor');
@@ -33,7 +45,7 @@ export const Navbar: React.FC = () => {
             </div>
           </Link>
 
-          {/* Center Navigation Shortcuts for Portals (hidden on tiny screens, clear on wider) */}
+          {/* Center Navigation Shortcuts for Portals (role-gated in production, all visible in dev) */}
           <div className="hidden sm:flex items-center gap-1 bg-gray-100 p-1 rounded-full text-xs font-medium">
             <Link
               to="/"
@@ -43,35 +55,50 @@ export const Navbar: React.FC = () => {
             >
               Member
             </Link>
-            <Link
-              to="/manager"
-              className={`px-3 py-1 rounded-full transition-colors ${
-                isManagerRoute ? 'bg-white text-emerald-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Manager
-            </Link>
-            <Link
-              to="/distributor"
-              className={`px-3 py-1 rounded-full transition-colors ${
-                isDistributorRoute ? 'bg-white text-amber-800 shadow-2xs font-bold' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Distributor
-            </Link>
-            <Link
-              to="/admin"
-              className={`px-3 py-1 rounded-full transition-colors ${
-                isAdminRoute ? 'bg-white text-emerald-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
-              }`}
-            >
-              Admin
-            </Link>
+            {(import.meta.env.DEV || user?.role === 'UNIT_MANAGER' || user?.role === 'ADMIN') && (
+              <Link
+                to="/manager"
+                className={`px-3 py-1 rounded-full transition-colors ${
+                  isManagerRoute ? 'bg-white text-emerald-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Manager
+              </Link>
+            )}
+            {(import.meta.env.DEV || user?.role === 'DISTRIBUTOR' || user?.role === 'ADMIN') && (
+              <Link
+                to="/distributor"
+                className={`px-3 py-1 rounded-full transition-colors ${
+                  isDistributorRoute ? 'bg-white text-amber-800 shadow-2xs font-bold' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Distributor
+              </Link>
+            )}
+            {(import.meta.env.DEV || user?.role === 'ADMIN') && (
+              <Link
+                to="/admin"
+                className={`px-3 py-1 rounded-full transition-colors ${
+                  isAdminRoute ? 'bg-white text-emerald-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Admin
+              </Link>
+            )}
           </div>
 
-          {/* Right Section: Role Switcher & Sign In */}
+          {/* Right Section: Role Switcher (Dev Only) & Sign In */}
           <div className="flex items-center gap-1.5">
-            <RoleSwitcher />
+            {isOffline && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold"
+                title="Offline Mode: Cached units & 6-digit pickup codes available"
+              >
+                <WifiOff size={11} />
+                <span className="hidden xs:inline">Offline Mode</span>
+              </span>
+            )}
+            {import.meta.env.DEV && <RoleSwitcher />}
 
             {!user ? (
               <button

@@ -157,3 +157,51 @@ func (h *WalletHandler) PayUnitWithWallet(w http.ResponseWriter, r *http.Request
 
 	writeJSON(w, http.StatusOK, res)
 }
+
+func (h *WalletHandler) ResolveAccount(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	bankName := r.URL.Query().Get("bank_name")
+	accountNumber := r.URL.Query().Get("account_number")
+
+	accountName, bankCode, err := h.walletService.ResolveBankAccount(r.Context(), userID, bankName, accountNumber)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"account_name":   accountName,
+		"account_number": accountNumber,
+		"bank_name":      bankName,
+		"bank_code":      bankCode,
+	})
+}
+
+func (h *WalletHandler) ListWithdrawals(w http.ResponseWriter, r *http.Request) {
+	list, err := h.walletService.ListWithdrawals(r.Context())
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (h *WalletHandler) ProcessWithdrawal(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Status string `json:"status"` // COMPLETED or REJECTED
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || (req.Status != "COMPLETED" && req.Status != "REJECTED") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be COMPLETED or REJECTED"})
+		return
+	}
+
+	updated, err := h.walletService.ProcessWithdrawal(r.Context(), id, req.Status)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, updated)
+}
+

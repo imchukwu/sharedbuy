@@ -235,3 +235,82 @@ func (h *DistributorHandler) MarkDelivered(w http.ResponseWriter, r *http.Reques
 		"order":   order,
 	})
 }
+
+// GET /api/manager/orders
+func (h *DistributorHandler) ListManagerOrders(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.GetUserID(r.Context())
+	userRole := middleware.GetUserRole(r.Context())
+
+	orders, err := h.distRepo.ListPurchaseOrders(r.Context(), "")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	if userRole == domain.RoleAdmin || userID == "" {
+		if orders == nil {
+			orders = []domain.PurchaseOrder{}
+		}
+		writeJSON(w, http.StatusOK, orders)
+		return
+	}
+
+	// Filter to orders associated with the manager's units (or if none explicitly matched, return hub orders for Piwoyi)
+	managedUnits, _ := h.unitRepo.GetManagedUnits(r.Context(), userID)
+	managedSet := make(map[string]bool)
+	for _, u := range managedUnits {
+		managedSet[u.ID] = true
+	}
+
+	var filtered []domain.PurchaseOrder
+	for _, o := range orders {
+		matched := false
+		for _, uid := range o.AssociatedUnitIDs {
+			if managedSet[uid] {
+				matched = true
+				break
+			}
+		}
+		if matched || len(o.AssociatedUnitIDs) == 0 {
+			filtered = append(filtered, o)
+		}
+	}
+
+	if filtered == nil {
+		filtered = []domain.PurchaseOrder{}
+	}
+	writeJSON(w, http.StatusOK, filtered)
+}
+
+type ConfirmReceiptRequest struct {
+	VerifiedWeightKg string `json:"verified_weight_kg,omitempty"`
+	InspectionNotes  string `json:"inspection_notes,omitempty"`
+}
+
+// POST /api/manager/orders/{id}/confirm-receipt
+func (h *DistributorHandler) ConfirmManagerReceipt(w http.ResponseWriter, r *http.Request) {
+	poID := chi.URLParam(r, "id")
+	var req ConfirmReceiptRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	order, unitIDs, err := h.distRepo.MarkOrderDelivered(r.Context(), poID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+
+	for _, unitID := range unitIDs {
+		_ = h.unitRepo.UpdateUnitStatus(r.Context(), unitID, domain.UnitStatusReadyForCollection)
+	}
+
+	msg := "✓ Hub receipt & scale weight verified! Associated units are now READY_FOR_COLLECTION."
+	if req.VerifiedWeightKg != "" {
+		msg = "✓ Hub receipt verified (" + req.VerifiedWeightKg + " weighed on scale)! Associated units are now READY_FOR_COLLECTION."
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": msg,
+		"order":   order,
+	})
+}

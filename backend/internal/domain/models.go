@@ -23,6 +23,7 @@ const (
 // Unit Statuses (State Machine)
 const (
 	UnitStatusDraft               = "DRAFT"
+	UnitStatusPendingAdminReview  = "PENDING_ADMIN_REVIEW"
 	UnitStatusOpen                = "OPEN"
 	UnitStatusFull                = "FULL"
 	UnitStatusPaymentClosed       = "PAYMENT_CLOSED"
@@ -81,12 +82,29 @@ type WithdrawalRequest struct {
 }
 
 type Area struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	City      string    `json:"city"`
-	State     string    `json:"state"`
-	IsActive  bool      `json:"is_active"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`         // e.g. "Piwoyi District Hub"
+	Locality    string          `json:"locality"`     // e.g. "Piwoyi", "Lugbe", "Gwarinpa"
+	City        string          `json:"city"`         // e.g. "Abuja"
+	State       string          `json:"state"`        // e.g. "FCT"
+	Country     string          `json:"country"`      // e.g. "Nigeria"
+	CountryCode string          `json:"country_code"` // e.g. "NG"
+	Currency    string          `json:"currency"`     // e.g. "NGN"
+	LaunchPhase string          `json:"launch_phase"` // e.g. "LIVE", "EXPANDING", "COMING_SOON"
+	IsActive    bool            `json:"is_active"`
+	Hubs        []CollectionHub `json:"hubs,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+}
+
+type CollectionHub struct {
+	ID        string `json:"id"`
+	AreaID    string `json:"area_id"`
+	Name      string `json:"name"`
+	Landmark  string `json:"landmark"`
+	Address   string `json:"address"`
+	MapURL    string `json:"map_url"`
+	ManagerID string `json:"manager_id,omitempty"`
+	IsActive  bool   `json:"is_active"`
 }
 
 type Product struct {
@@ -182,11 +200,14 @@ type Unit struct {
 	ManagerName            string     `json:"manager_name,omitempty"`
 	ManagerPhone           string     `json:"manager_phone,omitempty"`
 	ManagerRating          float64    `json:"manager_rating,omitempty"`
-	AreaID                 string     `json:"area_id"`
-	AreaName               string     `json:"area_name,omitempty"`
-	AreaCity               string     `json:"area_city,omitempty"`
-	AreaState              string     `json:"area_state,omitempty"`
-	CollectionAddress      string     `json:"collection_address"`
+	AreaID                     string     `json:"area_id"`
+	AreaName                   string     `json:"area_name,omitempty"`
+	AreaLocality               string     `json:"area_locality,omitempty"`
+	AreaCity                   string     `json:"area_city,omitempty"`
+	AreaState                  string     `json:"area_state,omitempty"`
+	AreaCountry                string     `json:"area_country,omitempty"`
+	HubID                      string     `json:"hub_id,omitempty"`
+	CollectionAddress          string     `json:"collection_address"`
 	CollectionLandmark     string     `json:"collection_landmark"`
 	CollectionMapURL       string     `json:"collection_map_url,omitempty"`
 	TotalPacks             int        `json:"total_packs"`
@@ -223,6 +244,20 @@ type UnitMember struct {
 	CollectionCode   string     `json:"collection_code"`
 	JoinedAt         time.Time  `json:"joined_at"`
 	CollectedAt      *time.Time `json:"collected_at,omitempty"`
+}
+
+type MemberUnitBooking struct {
+	MemberID         string     `json:"member_id"`
+	UnitID           string     `json:"unit_id"`
+	UserID           string     `json:"user_id"`
+	SharesCount      int        `json:"shares_count"`
+	AmountPaidKobo   int64      `json:"amount_paid_kobo"`
+	PaymentStatus    string     `json:"payment_status"`
+	CollectionStatus string     `json:"collection_status"`
+	CollectionCode   string     `json:"collection_code"`
+	JoinedAt         time.Time  `json:"joined_at"`
+	CollectedAt      *time.Time `json:"collected_at,omitempty"`
+	Unit             Unit       `json:"unit"`
 }
 
 type Payment struct {
@@ -281,10 +316,46 @@ type ManagerCommission struct {
 	PaidAt     *time.Time `json:"paid_at,omitempty"`
 }
 
+type ManagerCommissionItem struct {
+	UnitID                  string    `json:"unit_id"`
+	ProductName             string    `json:"product_name"`
+	ProductPackSize         string    `json:"product_pack_size"`
+	CollectionLandmark      string    `json:"collection_landmark"`
+	AreaLocality            string    `json:"area_locality"`
+	UnitStatus              string    `json:"unit_status"`
+	CurrentSharesCount      int       `json:"current_shares_count"`
+	MaxMembers              int       `json:"max_members"`
+	CommissionPerShareKobo  int64     `json:"commission_per_share_kobo"`
+	ProjectedCommissionKobo int64     `json:"projected_commission_kobo"`
+	EarnedCommissionKobo    int64     `json:"earned_commission_kobo"`
+	PayoutStatus            string    `json:"payout_status"` // PENDING, SETTLED
+	SharingDate             time.Time `json:"sharing_date"`
+}
+
+type ManagerCommissionSummary struct {
+	ManagerID               string                  `json:"manager_id"`
+	ManagerName             string                  `json:"manager_name"`
+	TotalUnitsManaged       int                     `json:"total_units_managed"`
+	CompletedUnitsCount     int                     `json:"completed_units_count"`
+	TotalSharesManaged      int                     `json:"total_shares_managed"`
+	TotalSharesCollected    int                     `json:"total_shares_collected"`
+	PickupCompletionRate    float64                 `json:"pickup_completion_rate"`
+	OnTimeFulfillmentRate   float64                 `json:"on_time_fulfillment_rate"`
+	AverageRating           float64                 `json:"average_rating"`
+	PendingCommissionKobo   int64                   `json:"pending_commission_kobo"`
+	SettledCommissionKobo   int64                   `json:"settled_commission_kobo"`
+	TotalProjectedKobo      int64                   `json:"total_projected_kobo"`
+	WalletBalanceKobo       int64                   `json:"wallet_balance_kobo"`
+	Items                   []ManagerCommissionItem `json:"items"`
+}
+
 type Dispute struct {
 	ID              string     `json:"id"`
 	UnitID          string     `json:"unit_id"`
+	UnitProductName string     `json:"unit_product_name,omitempty"`
+	UnitLandmark    string     `json:"unit_landmark,omitempty"`
 	UserID          string     `json:"user_id"`
+	ReporterName    string     `json:"reporter_name,omitempty"`
 	Type            string     `json:"type"` // SHORTAGE, QUALITY, NO_SHOW, OTHER
 	Description     string     `json:"description"`
 	PhotoURLs       []string   `json:"photo_urls"`
@@ -312,3 +383,18 @@ type Setting struct {
 	Value     string    `json:"value"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
+
+type NotificationLog struct {
+	ID            string    `json:"id"`
+	Recipient     string    `json:"recipient"`
+	RecipientName string    `json:"recipient_name,omitempty"`
+	Channel       string    `json:"channel"`  // SMS_DND, WHATSAPP, SMS_GENERIC
+	Category      string    `json:"category"` // OTP, PAYMENT_RECEIPT, HUB_ARRIVAL, PICKUP_REMINDER, REFUND_ALERT
+	UnitID        string    `json:"unit_id,omitempty"`
+	Message       string    `json:"message"`
+	Gateway       string    `json:"gateway"`    // TERMII
+	GatewayMsgID  string    `json:"gateway_msg_id"`
+	Status        string    `json:"status"`     // DELIVERED, SENT, SIMULATED
+	CreatedAt     time.Time `json:"created_at"`
+}
+

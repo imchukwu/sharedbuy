@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { formatKobo } from '../../utils/formatters';
-import { X, Sparkles, ShieldCheck, Truck, Percent, Store, CheckCircle, Loader2 } from 'lucide-react';
+import type { Area, CollectionHub, DistributorCommodity } from '../../types';
+import { X, Sparkles, ShieldCheck, Truck, Percent, Store, CheckCircle, Loader2, Globe, MapPin } from 'lucide-react';
 
 interface CreateUnitModalProps {
   isOpen: boolean;
@@ -9,7 +10,7 @@ interface CreateUnitModalProps {
   onUnitCreated: () => void;
 }
 
-const PRODUCTS = [
+const DEFAULT_PRODUCTS = [
   {
     id: 'prod-rice-mama-gold-50kg',
     name: 'Mama Gold Premium Long Grain Parboiled Rice',
@@ -56,59 +57,134 @@ const PRODUCTS = [
   },
 ];
 
-const PIWOYI_HUBS = [
+const FALLBACK_HUBS: CollectionHub[] = [
   {
+    id: 'hub-piwoyi-biana',
+    area_id: 'area-piwoyi-abuja',
+    name: 'Piwoyi New Extension Hub',
     address: '16 Biana street, New Extension, Piwoyi, Abuja',
     landmark: '16 Biana street, New Extension',
+    map_url: 'https://www.google.com/maps/search/?api=1&query=16+Biana+street+New+Extension+Piwoyi+Abuja',
+    is_active: true,
   },
   {
+    id: 'hub-piwoyi-salam',
+    area_id: 'area-piwoyi-abuja',
+    name: 'Salam Salam Community Hub',
     address: 'Behind Salam Salam, Piwoyi, Abuja',
     landmark: 'Behind Salam Salam',
+    map_url: 'https://www.google.com/maps/search/?api=1&query=Behind+Salam+Salam+Piwoyi+Abuja',
+    is_active: true,
   },
   {
+    id: 'hub-piwoyi-sarah',
+    area_id: 'area-piwoyi-abuja',
+    name: 'Sarah Dominion Hub',
     address: 'Behind Sarah Dominion School, Piwoyi, Abuja',
     landmark: 'Behind Sarah Dominion School',
+    map_url: 'https://www.google.com/maps/search/?api=1&query=Behind+Sarah+Dominion+School+Piwoyi+Abuja',
+    is_active: true,
   },
   {
+    id: 'hub-piwoyi-bakery',
+    area_id: 'area-piwoyi-abuja',
+    name: 'Piwoyi Bakery Hub',
     address: 'By Bakery, Piwoyi, Abuja',
     landmark: 'By Bakery, Piwoyi Main Road',
+    map_url: 'https://www.google.com/maps/search/?api=1&query=By+Bakery+Piwoyi+Abuja',
+    is_active: true,
   },
 ];
 
 export const CreateUnitModal: React.FC<CreateUnitModalProps> = ({ isOpen, onClose, onUnitCreated }) => {
   const { token, user } = useAuth();
-  const [selectedProdId, setSelectedProdId] = useState(PRODUCTS[0].id);
-  const [selectedHub, setSelectedHub] = useState(PIWOYI_HUBS[0]);
-  const [totalPacks, setTotalPacks] = useState(PRODUCTS[0].defaultPacks);
-  const [maxMembers, setMaxMembers] = useState(PRODUCTS[0].defaultShares);
-  const [shareSize, setShareSize] = useState(PRODUCTS[0].defaultShareSize);
-  const [wholesalePackNaira, setWholesalePackNaira] = useState(PRODUCTS[0].defaultWholesalePackNaira);
-  const [deliveryFeeNaira, setDeliveryFeeNaira] = useState(PRODUCTS[0].defaultDeliveryFeeNaira);
+  const [areas, setAreas] = useState<Area[]>([]);
+  const [selectedAreaId, setSelectedAreaId] = useState('area-piwoyi-abuja');
+  const [selectedHub, setSelectedHub] = useState<CollectionHub>(FALLBACK_HUBS[0]);
+  const [commodities, setCommodities] = useState<DistributorCommodity[]>([]);
+
+  const [selectedProdId, setSelectedProdId] = useState(DEFAULT_PRODUCTS[0].id);
+  const [totalPacks, setTotalPacks] = useState(DEFAULT_PRODUCTS[0].defaultPacks);
+  const [maxMembers, setMaxMembers] = useState(DEFAULT_PRODUCTS[0].defaultShares);
+  const [shareSize, setShareSize] = useState(DEFAULT_PRODUCTS[0].defaultShareSize);
+  const [wholesalePackNaira, setWholesalePackNaira] = useState(DEFAULT_PRODUCTS[0].defaultWholesalePackNaira);
+  const [deliveryFeeNaira, setDeliveryFeeNaira] = useState(DEFAULT_PRODUCTS[0].defaultDeliveryFeeNaira);
   const [deadlineHours, setDeadlineHours] = useState(48);
   const [sharingDaysAhead, setSharingDaysAhead] = useState(4);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  // Fetch live geographic areas (Localities, States, Countries) & live distributor commodity quotes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    fetch('/api/areas')
+      .then((res) => res.json())
+      .then((data: Area[]) => {
+        if (data && data.length > 0) {
+          setAreas(data);
+          const defaultArea = data.find((a) => a.id === selectedAreaId) || data[0];
+          setSelectedAreaId(defaultArea.id);
+          if (defaultArea.hubs && defaultArea.hubs.length > 0) {
+            setSelectedHub(defaultArea.hubs[0]);
+          }
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/distributor/commodities')
+      .then((res) => res.json())
+      .then((data: DistributorCommodity[]) => {
+        if (data && data.length > 0) {
+          setCommodities(data);
+          const matchingQuote = data.find((c) => c.product_id === selectedProdId);
+          if (matchingQuote) {
+            setWholesalePackNaira(Math.round(matchingQuote.price_per_pack_kobo / 100));
+            setDeliveryFeeNaira(Math.round(matchingQuote.delivery_fee_kobo / 100));
+          }
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const currentProduct = PRODUCTS.find((p) => p.id === selectedProdId) || PRODUCTS[0];
+  const currentArea = areas.find((a) => a.id === selectedAreaId);
+  const availableHubs = currentArea?.hubs && currentArea.hubs.length > 0 ? currentArea.hubs : FALLBACK_HUBS;
+  const currentProduct = DEFAULT_PRODUCTS.find((p) => p.id === selectedProdId) || DEFAULT_PRODUCTS[0];
+
+  const handleAreaChange = (areaId: string) => {
+    setSelectedAreaId(areaId);
+    const area = areas.find((a) => a.id === areaId);
+    if (area && area.hubs && area.hubs.length > 0) {
+      setSelectedHub(area.hubs[0]);
+    }
+  };
 
   const handleProductChange = (prodId: string) => {
-    const prod = PRODUCTS.find((p) => p.id === prodId);
+    const prod = DEFAULT_PRODUCTS.find((p) => p.id === prodId);
     if (prod) {
       setSelectedProdId(prod.id);
       setTotalPacks(prod.defaultPacks);
       setMaxMembers(prod.defaultShares);
       setShareSize(prod.defaultShareSize);
-      setWholesalePackNaira(prod.defaultWholesalePackNaira);
-      setDeliveryFeeNaira(prod.defaultDeliveryFeeNaira);
+
+      // Check if live distributor quote exists for this product
+      const liveQuote = commodities.find((c) => c.product_id === prod.id);
+      if (liveQuote) {
+        setWholesalePackNaira(Math.round(liveQuote.price_per_pack_kobo / 100));
+        setDeliveryFeeNaira(Math.round(liveQuote.delivery_fee_kobo / 100));
+      } else {
+        setWholesalePackNaira(prod.defaultWholesalePackNaira);
+        setDeliveryFeeNaira(prod.defaultDeliveryFeeNaira);
+      }
     }
   };
 
   // --- Real-time Unit Economics & Cost Breakdown Calculator ---
   const totalGoodsNaira = wholesalePackNaira * totalPacks;
   const goodsCostShareNaira = Math.round(totalGoodsNaira / maxMembers);
-  const deliveryCostShareNaira = Math.round(deliveryFeeNaira / maxMembers);
+  const deliveryCostShareNaira = Math.round((deliveryFeeNaira * totalPacks) / maxMembers);
   const platformFeeShareNaira = Math.round(goodsCostShareNaira * 0.04);
   const managerCommissionShareNaira = Math.round(goodsCostShareNaira * 0.03);
   const bufferShareNaira = Math.round(goodsCostShareNaira * 0.04);
@@ -138,11 +214,17 @@ export const CreateUnitModal: React.FC<CreateUnitModalProps> = ({ isOpen, onClos
         },
         body: JSON.stringify({
           product_id: selectedProdId,
+          product_name: currentProduct.name,
+          product_category: currentProduct.category,
+          product_pack_size: currentProduct.packSize,
           manager_id: user?.id,
-          area_id: 'area-piwoyi-abuja',
+          area_id: selectedAreaId,
+          hub_id: selectedHub.id,
           collection_address: selectedHub.address,
           collection_landmark: selectedHub.landmark,
-          collection_map_url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedHub.address)}`,
+          collection_map_url:
+            selectedHub.map_url ||
+            `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedHub.address)}`,
           total_packs: totalPacks,
           share_size: shareSize,
           max_members: maxMembers,
@@ -186,9 +268,35 @@ export const CreateUnitModal: React.FC<CreateUnitModalProps> = ({ isOpen, onClos
             <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto shadow-inner">
               <CheckCircle size={32} />
             </div>
-            <h4 className="font-bold text-base text-gray-900">Unit Successfully Launched!</h4>
-            <p className="text-xs text-gray-600 max-w-sm mx-auto">
-              Your unit for <strong>{currentProduct.name}</strong> at <strong>{selectedHub.landmark}</strong> is now live and accepting neighbor joins.
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px]">
+              {user?.role === 'ADMIN' ? '✓ PUBLISHED (OPEN)' : '⏳ STATUS: PENDING_ADMIN_REVIEW'}
+            </div>
+            <h4 className="font-bold text-base text-gray-900">
+              {user?.role === 'ADMIN'
+                ? 'Unit Successfully Launched!'
+                : 'Unit Submitted for Admin Review!'}
+            </h4>
+            <p className="text-xs text-gray-600 max-w-sm mx-auto leading-relaxed">
+              {user?.role === 'ADMIN' ? (
+                <>
+                  Your unit for <strong>{currentProduct.name}</strong> at{' '}
+                  <strong>
+                    {selectedHub.landmark} ({currentArea?.locality || 'Piwoyi'},{' '}
+                    {currentArea?.state || 'FCT'})
+                  </strong>{' '}
+                  is now live and accepting neighbor joins.
+                </>
+              ) : (
+                <>
+                  Your unit for <strong>{currentProduct.name}</strong> at{' '}
+                  <strong>
+                    {selectedHub.landmark} ({currentArea?.locality || 'Piwoyi'},{' '}
+                    {currentArea?.state || 'FCT'})
+                  </strong>{' '}
+                  has been created in <strong>PENDING_ADMIN_REVIEW</strong> status. Once Admin
+                  verifies supplier pricing, it opens to neighbors.
+                </>
+              )}
             </p>
             <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-xs text-emerald-950 font-semibold">
               Share Price: {formatKobo(pricePerShareQuotedKobo)} ({shareSize}) • {maxMembers} Shares Total
@@ -200,12 +308,12 @@ export const CreateUnitModal: React.FC<CreateUnitModalProps> = ({ isOpen, onClos
               }}
               className="w-full py-2.5 rounded-xl bg-emerald-700 text-white font-bold text-xs cursor-pointer"
             >
-              Done & View Unit
+              Done & View in My Managed Units
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="py-3 space-y-4 text-xs">
-            {/* 1. Select Product */}
+            {/* 1. Select Staple Product */}
             <div>
               <label className="font-semibold text-gray-700 block mb-1">1. Select Staple Product</label>
               <select
@@ -213,7 +321,7 @@ export const CreateUnitModal: React.FC<CreateUnitModalProps> = ({ isOpen, onClos
                 onChange={(e) => handleProductChange(e.target.value)}
                 className="w-full p-2.5 rounded-xl border border-gray-300 font-semibold text-xs bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
               >
-                {PRODUCTS.map((p) => (
+                {DEFAULT_PRODUCTS.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.packSize})
                   </option>
@@ -221,23 +329,60 @@ export const CreateUnitModal: React.FC<CreateUnitModalProps> = ({ isOpen, onClos
               </select>
             </div>
 
-            {/* 2. Select Pickup Hub in Piwoyi */}
-            <div>
-              <label className="font-semibold text-gray-700 block mb-1">2. Collection Hub (Piwoyi, Abuja)</label>
-              <select
-                value={selectedHub.address}
-                onChange={(e) => {
-                  const hub = PIWOYI_HUBS.find((h) => h.address === e.target.value);
-                  if (hub) setSelectedHub(hub);
-                }}
-                className="w-full p-2.5 rounded-xl border border-gray-300 font-medium text-xs bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
-              >
-                {PIWOYI_HUBS.map((h) => (
-                  <option key={h.address} value={h.address}>
-                    {h.landmark} — {h.address}
-                  </option>
-                ))}
-              </select>
+            {/* 2. Geographic Hierarchy: Country / State / Locality & Pickup Hub */}
+            <div className="p-3 rounded-2xl bg-gray-50 border border-gray-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-gray-700 flex items-center gap-1.5 text-xs">
+                  <Globe size={13} className="text-emerald-700" /> 2. Target Locality & Pickup Hub
+                </span>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                  {currentArea?.country || 'Nigeria'} • {currentArea?.state || 'FCT'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-600 block mb-1">Locality / Vicinity</label>
+                  <select
+                    value={selectedAreaId}
+                    onChange={(e) => handleAreaChange(e.target.value)}
+                    className="w-full p-2 rounded-xl border border-gray-300 font-semibold text-xs bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                  >
+                    {areas.length > 0 ? (
+                      areas.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.locality}, {a.city} ({a.state}) — {a.launch_phase === 'LIVE' ? '★ Launch Area' : 'Expansion'}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="area-piwoyi-abuja">Piwoyi, Abuja (FCT) — ★ Launch Area</option>
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-gray-600 block mb-1">Verified Collection Hub</label>
+                  <select
+                    value={selectedHub.address}
+                    onChange={(e) => {
+                      const hub = availableHubs.find((h) => h.address === e.target.value);
+                      if (hub) setSelectedHub(hub);
+                    }}
+                    className="w-full p-2 rounded-xl border border-gray-300 font-medium text-xs bg-white focus:ring-2 focus:ring-emerald-600 focus:outline-none"
+                  >
+                    {availableHubs.map((h) => (
+                      <option key={h.id || h.address} value={h.address}>
+                        {h.landmark}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-gray-500 flex items-center gap-1">
+                <MapPin size={12} className="text-emerald-700 shrink-0" />
+                <span className="truncate">{selectedHub.address}</span>
+              </div>
             </div>
 
             {/* 3. Pack count and Shares configuration */}
@@ -277,7 +422,7 @@ export const CreateUnitModal: React.FC<CreateUnitModalProps> = ({ isOpen, onClos
               </div>
             </div>
 
-            {/* 4. Wholesale Pricing Parameters */}
+            {/* 4. Wholesale Pricing Parameters (Synced with Live Distributor Quotes) */}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="font-semibold text-gray-700 block mb-1">Wholesale / Pack (₦)</label>
@@ -395,10 +540,14 @@ export const CreateUnitModal: React.FC<CreateUnitModalProps> = ({ isOpen, onClos
               {loading ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  <span>Launching Unit...</span>
+                  <span>Submitting Unit...</span>
                 </>
+              ) : user?.role === 'ADMIN' ? (
+                <span>Launch Unit Directly at {formatKobo(pricePerShareQuotedKobo)} / Share</span>
               ) : (
-                <span>Launch Unit at {formatKobo(pricePerShareQuotedKobo)} / Share</span>
+                <span>
+                  Submit Unit for Admin Review ({formatKobo(pricePerShareQuotedKobo)} / Share)
+                </span>
               )}
             </button>
           </form>

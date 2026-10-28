@@ -12,8 +12,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultTa
   const { requestOTP, loginWithOTP, loginAdmin } = useAuth();
   const [tab, setTab] = useState<'member' | 'admin'>(defaultTab);
 
+  const isDev = import.meta.env.DEV;
+
   // Member state
-  const [phone, setPhone] = useState('+2348100000001');
+  const [phone, setPhone] = useState(isDev ? '+2348100000001' : '');
   const [code, setCode] = useState('');
   const [fullName, setFullName] = useState('');
   const [areaId] = useState('area-piwoyi-abuja');
@@ -22,8 +24,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultTa
   const [otpHint, setOtpHint] = useState<string | null>(null);
 
   // Admin state
-  const [email, setEmail] = useState('admin@sharedbuy.ng');
-  const [password, setPassword] = useState('Admin@123456');
+  const [email, setEmail] = useState(isDev ? 'admin@sharedbuy.ng' : '');
+  const [password, setPassword] = useState(isDev ? 'Admin@123456' : '');
 
   // Common state
   const [loading, setLoading] = useState(false);
@@ -38,8 +40,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultTa
     try {
       const res = await requestOTP(phone);
       setStep('otp');
-      setOtpHint(res.code || '123456');
-      setCode(res.code || '123456');
+      if (res.code) {
+        setOtpHint(res.code);
+        setCode(res.code);
+      } else {
+        setOtpHint(null);
+        setCode('');
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to send OTP');
     } finally {
@@ -161,28 +168,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultTa
                 />
               </div>
 
-              {/* Quick Preset Buttons */}
-              <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-100 text-xs space-y-1.5">
-                <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
-                  <Sparkles size={14} /> Quick Demo Profiles:
+              {/* Quick Preset Buttons (Development Mode Only) */}
+              {isDev && (
+                <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-100 text-xs space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
+                    <Sparkles size={14} /> Quick Demo Profiles:
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPhone('+2348100000001')}
+                      className="px-2 py-1 rounded-md bg-white border border-emerald-200 text-emerald-900 text-[11px] hover:bg-emerald-100"
+                    >
+                      Babagana (Member)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPhone('+2348011112222')}
+                      className="px-2 py-1 rounded-md bg-white border border-emerald-200 text-emerald-900 text-[11px] hover:bg-emerald-100"
+                    >
+                      Aisha (Unit Mgr)
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPhone('+2348100000001')}
-                    className="px-2 py-1 rounded-md bg-white border border-emerald-200 text-emerald-900 text-[11px] hover:bg-emerald-100"
-                  >
-                    Babagana (Member)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPhone('+2348011112222')}
-                    className="px-2 py-1 rounded-md bg-white border border-emerald-200 text-emerald-900 text-[11px] hover:bg-emerald-100"
-                  >
-                    Aisha (Unit Mgr)
-                  </button>
-                </div>
-              </div>
+              )}
 
               <button
                 type="submit"
@@ -263,10 +272,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultTa
               </div>
             </div>
 
-            <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs text-purple-900 flex items-center gap-2">
-              <CheckCircle2 size={16} className="text-purple-600 shrink-0" />
-              <span>Two-Factor Authentication (2FA) verification bypassed for test session.</span>
-            </div>
+            {isDev && (
+              <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs text-purple-900 flex items-center gap-2">
+                <CheckCircle2 size={16} className="text-purple-600 shrink-0" />
+                <span>Two-Factor Authentication (2FA) verification bypassed for test session.</span>
+              </div>
+            )}
 
             <button
               type="submit"

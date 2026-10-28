@@ -18,18 +18,58 @@ type mockOTP struct {
 }
 
 type UserRepository struct {
-	db        *sql.DB
-	mockUsers map[string]*domain.User
-	mockOTPs  map[string]mockOTP
-	mu        sync.RWMutex
+	db           *sql.DB
+	mockUsers    map[string]*domain.User
+	mockOTPs     map[string]mockOTP
+	allowMockOTP bool
+	mu           sync.RWMutex
 }
 
 func NewUserRepository(db *sql.DB) *UserRepository {
 	return &UserRepository{
-		db:        db,
-		mockUsers: getMockUsers(),
-		mockOTPs:  make(map[string]mockOTP),
+		db:           db,
+		mockUsers:    getMockUsers(),
+		mockOTPs:     make(map[string]mockOTP),
+		allowMockOTP: false,
 	}
+}
+
+func (r *UserRepository) SetAllowMockOTP(allow bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.allowMockOTP = allow
+}
+
+const userSelectColumns = `
+	SELECT u.id, u.full_name, u.phone, u.email, u.password_hash, u.role, u.admin_subrole,
+	       u.area_id, a.name as area_name, u.status, u.rating,
+	       COALESCE(u.wallet_balance_kobo, 0), COALESCE(u.referral_code, ''), u.referred_by,
+	       COALESCE(u.referral_earnings_kobo, 0), COALESCE(u.referrals_count, 0),
+	       u.created_at, u.updated_at
+	FROM users u
+	LEFT JOIN areas a ON u.area_id = a.id
+`
+
+func scanUserRow(row interface{ Scan(dest ...any) error }) (*domain.User, error) {
+	var u domain.User
+	var areaName sql.NullString
+	err := row.Scan(
+		&u.ID, &u.FullName, &u.Phone, &u.Email, &u.PasswordHash, &u.Role, &u.AdminSubrole,
+		&u.AreaID, &areaName, &u.Status, &u.Rating,
+		&u.WalletBalanceKobo, &u.ReferralCode, &u.ReferredBy,
+		&u.ReferralEarningsKobo, &u.ReferralsCount,
+		&u.CreatedAt, &u.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if areaName.Valid {
+		u.AreaName = &areaName.String
+	}
+	return &u, nil
 }
 
 func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, error) {
@@ -43,29 +83,11 @@ func (r *UserRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 		return nil, nil
 	}
 
-	query := `
-		SELECT u.id, u.full_name, u.phone, u.email, u.password_hash, u.role, u.admin_subrole,
-		       u.area_id, a.name as area_name, u.status, u.rating, u.created_at, u.updated_at
-		FROM users u
-		LEFT JOIN areas a ON u.area_id = a.id
-		WHERE u.id = $1
-	`
-	var u domain.User
-	var areaName sql.NullString
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
-		&u.ID, &u.FullName, &u.Phone, &u.Email, &u.PasswordHash, &u.Role, &u.AdminSubrole,
-		&u.AreaID, &areaName, &u.Status, &u.Rating, &u.CreatedAt, &u.UpdatedAt,
-	)
+	u, err := scanUserRow(r.db.QueryRowContext(ctx, userSelectColumns+" WHERE u.id = $1", id))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("error querying user by ID: %w", err)
 	}
-	if areaName.Valid {
-		u.AreaName = &areaName.String
-	}
-	return &u, nil
+	return u, nil
 }
 
 func (r *UserRepository) GetByPhone(ctx context.Context, phone string) (*domain.User, error) {
@@ -81,29 +103,11 @@ func (r *UserRepository) GetByPhone(ctx context.Context, phone string) (*domain.
 		return nil, nil
 	}
 
-	query := `
-		SELECT u.id, u.full_name, u.phone, u.email, u.password_hash, u.role, u.admin_subrole,
-		       u.area_id, a.name as area_name, u.status, u.rating, u.created_at, u.updated_at
-		FROM users u
-		LEFT JOIN areas a ON u.area_id = a.id
-		WHERE u.phone = $1
-	`
-	var u domain.User
-	var areaName sql.NullString
-	err := r.db.QueryRowContext(ctx, query, phone).Scan(
-		&u.ID, &u.FullName, &u.Phone, &u.Email, &u.PasswordHash, &u.Role, &u.AdminSubrole,
-		&u.AreaID, &areaName, &u.Status, &u.Rating, &u.CreatedAt, &u.UpdatedAt,
-	)
+	u, err := scanUserRow(r.db.QueryRowContext(ctx, userSelectColumns+" WHERE u.phone = $1", phone))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("error querying user by phone: %w", err)
 	}
-	if areaName.Valid {
-		u.AreaName = &areaName.String
-	}
-	return &u, nil
+	return u, nil
 }
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
@@ -119,29 +123,11 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 		return nil, nil
 	}
 
-	query := `
-		SELECT u.id, u.full_name, u.phone, u.email, u.password_hash, u.role, u.admin_subrole,
-		       u.area_id, a.name as area_name, u.status, u.rating, u.created_at, u.updated_at
-		FROM users u
-		LEFT JOIN areas a ON u.area_id = a.id
-		WHERE LOWER(u.email) = LOWER($1)
-	`
-	var u domain.User
-	var areaName sql.NullString
-	err := r.db.QueryRowContext(ctx, query, email).Scan(
-		&u.ID, &u.FullName, &u.Phone, &u.Email, &u.PasswordHash, &u.Role, &u.AdminSubrole,
-		&u.AreaID, &areaName, &u.Status, &u.Rating, &u.CreatedAt, &u.UpdatedAt,
-	)
+	u, err := scanUserRow(r.db.QueryRowContext(ctx, userSelectColumns+" WHERE LOWER(u.email) = LOWER($1)", email))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("error querying user by email: %w", err)
 	}
-	if areaName.Valid {
-		u.AreaName = &areaName.String
-	}
-	return &u, nil
+	return u, nil
 }
 
 func (r *UserRepository) GetByReferralCode(ctx context.Context, code string) (*domain.User, error) {
@@ -160,29 +146,11 @@ func (r *UserRepository) GetByReferralCode(ctx context.Context, code string) (*d
 		return nil, nil
 	}
 
-	query := `
-		SELECT u.id, u.full_name, u.phone, u.email, u.password_hash, u.role, u.admin_subrole,
-		       u.area_id, a.name as area_name, u.status, u.rating, u.created_at, u.updated_at
-		FROM users u
-		LEFT JOIN areas a ON u.area_id = a.id
-		WHERE LOWER(u.id) = LOWER($1)
-	`
-	var u domain.User
-	var areaName sql.NullString
-	err := r.db.QueryRowContext(ctx, query, code).Scan(
-		&u.ID, &u.FullName, &u.Phone, &u.Email, &u.PasswordHash, &u.Role, &u.AdminSubrole,
-		&u.AreaID, &areaName, &u.Status, &u.Rating, &u.CreatedAt, &u.UpdatedAt,
-	)
+	u, err := scanUserRow(r.db.QueryRowContext(ctx, userSelectColumns+" WHERE LOWER(u.referral_code) = LOWER($1) OR LOWER(u.id) = LOWER($1)", code))
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("error querying user by referral: %w", err)
 	}
-	if areaName.Valid {
-		u.AreaName = &areaName.String
-	}
-	return &u, nil
+	return u, nil
 }
 
 func (r *UserRepository) Create(ctx context.Context, u *domain.User) error {
@@ -199,12 +167,17 @@ func (r *UserRepository) Create(ctx context.Context, u *domain.User) error {
 	}
 
 	query := `
-		INSERT INTO users (id, full_name, phone, email, password_hash, role, admin_subrole, area_id, status, rating, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+		INSERT INTO users (
+			id, full_name, phone, email, password_hash, role, admin_subrole, area_id,
+			status, rating, wallet_balance_kobo, referral_code, referred_by,
+			referral_earnings_kobo, referrals_count, created_at, updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULLIF($12, ''), $13, $14, $15, NOW(), NOW())
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		u.ID, u.FullName, u.Phone, u.Email, u.PasswordHash, u.Role, u.AdminSubrole,
-		u.AreaID, u.Status, u.Rating,
+		u.AreaID, u.Status, u.Rating, u.WalletBalanceKobo, u.ReferralCode, u.ReferredBy,
+		u.ReferralEarningsKobo, u.ReferralsCount,
 	)
 	return err
 }
@@ -221,10 +194,16 @@ func (r *UserRepository) Update(ctx context.Context, u *domain.User) error {
 
 	query := `
 		UPDATE users
-		SET full_name = $1, email = $2, role = $3, area_id = $4, status = $5, updated_at = NOW()
-		WHERE id = $6
+		SET full_name = $1, email = $2, role = $3, area_id = $4, status = $5,
+		    wallet_balance_kobo = $6, referral_code = NULLIF($7, ''), referred_by = $8,
+		    referral_earnings_kobo = $9, referrals_count = $10, updated_at = NOW()
+		WHERE id = $11
 	`
-	_, err := r.db.ExecContext(ctx, query, u.FullName, u.Email, u.Role, u.AreaID, u.Status, u.ID)
+	_, err := r.db.ExecContext(ctx, query,
+		u.FullName, u.Email, u.Role, u.AreaID, u.Status,
+		u.WalletBalanceKobo, u.ReferralCode, u.ReferredBy,
+		u.ReferralEarningsKobo, u.ReferralsCount, u.ID,
+	)
 	return err
 }
 
@@ -248,8 +227,12 @@ func (r *UserRepository) SaveOTP(ctx context.Context, phone, code string, expire
 }
 
 func (r *UserRepository) VerifyOTP(ctx context.Context, phone, code string) (bool, error) {
-	// Support testing mock code 123456
-	if code == "123456" {
+	r.mu.RLock()
+	allowBypass := r.allowMockOTP
+	r.mu.RUnlock()
+
+	// Support testing mock code 123456 ONLY when explicitly enabled in development mode
+	if allowBypass && code == "123456" {
 		return true, nil
 	}
 

@@ -40,12 +40,29 @@ export interface WalletSummary {
   transactions: WalletLedger[];
 }
 
+export interface CollectionHub {
+  id: string;
+  area_id: string;
+  name: string;
+  landmark: string;
+  address: string;
+  map_url: string;
+  manager_id?: string;
+  is_active: boolean;
+}
+
 export interface Area {
   id: string;
   name: string;
+  locality: string;
   city: string;
   state: string;
+  country: string;
+  country_code: string;
+  currency: string;
+  launch_phase: 'LIVE' | 'EXPANDING' | 'COMING_SOON';
   is_active: boolean;
+  hubs?: CollectionHub[];
   created_at: string;
 }
 
@@ -64,6 +81,7 @@ export interface Product {
 
 export type UnitStatus =
   | 'DRAFT'
+  | 'PENDING_ADMIN_REVIEW'
   | 'OPEN'
   | 'FULL'
   | 'PAYMENT_CLOSED'
@@ -90,8 +108,11 @@ export interface Unit {
   manager_rating: number;
   area_id: string;
   area_name: string;
+  area_locality?: string;
   area_city: string;
   area_state: string;
+  area_country?: string;
+  hub_id?: string;
   collection_address: string;
   collection_landmark: string;
   collection_map_url?: string;
@@ -129,6 +150,20 @@ export interface UnitMember {
   collection_code: string;
   joined_at: string;
   collected_at?: string;
+}
+
+export interface MemberUnitBooking {
+  member_id: string;
+  unit_id: string;
+  user_id: string;
+  shares_count: number;
+  amount_paid_kobo: number;
+  payment_status: 'PENDING' | 'PAID' | 'REFUNDED';
+  collection_status: 'PENDING' | 'COLLECTED' | 'NO_SHOW';
+  collection_code: string;
+  joined_at: string;
+  collected_at?: string;
+  unit: Unit;
 }
 
 export interface AuthResponse {
@@ -178,3 +213,68 @@ export interface PurchaseOrder {
   dispatched_at?: string;
   delivered_at?: string;
 }
+
+export interface ManagerCommissionItem {
+  unit_id: string;
+  product_name: string;
+  product_pack_size: string;
+  collection_landmark: string;
+  area_locality: string;
+  unit_status: UnitStatus;
+  current_shares_count: number;
+  max_members: number;
+  commission_per_share_kobo: number;
+  projected_commission_kobo: number;
+  earned_commission_kobo: number;
+  payout_status: 'PENDING' | 'SETTLED';
+  sharing_date: string;
+}
+
+export interface ManagerCommissionSummary {
+  manager_id: string;
+  manager_name: string;
+  total_units_managed: number;
+  completed_units_count: number;
+  total_shares_managed?: number;
+  total_shares_collected?: number;
+  pickup_completion_rate?: number;
+  on_time_fulfillment_rate?: number;
+  average_rating?: number;
+  pending_commission_kobo: number;
+  settled_commission_kobo: number;
+  total_projected_kobo: number;
+  wallet_balance_kobo: number;
+  items: ManagerCommissionItem[];
+}
+
+export interface Dispute {
+  id: string;
+  unit_id: string;
+  unit_product_name?: string;
+  unit_landmark?: string;
+  user_id: string;
+  reporter_name?: string;
+  type: 'SHORTAGE' | 'QUALITY' | 'NO_SHOW' | 'OTHER';
+  description: string;
+  photo_urls?: string[];
+  status: 'OPEN' | 'INVESTIGATING' | 'RESOLVED' | 'REJECTED';
+  resolution_notes?: string;
+  created_at: string;
+  resolved_at?: string;
+}
+
+export interface NotificationLog {
+  id: string;
+  recipient: string;
+  recipient_name?: string;
+  channel: 'SMS_DND' | 'WHATSAPP' | 'SMS_GENERIC' | string;
+  category: string;
+  unit_id?: string;
+  message: string;
+  gateway: string;
+  gateway_msg_id: string;
+  status: string;
+  created_at: string;
+}
+
+

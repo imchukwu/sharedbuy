@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -33,4 +34,21 @@ func Connect(dbURL string) (*DB, error) {
 
 	log.Println("Connected to PostgreSQL database successfully.")
 	return &DB{SQL: db}, nil
+}
+
+func (d *DB) RunMigrations(schemaPath string) error {
+	if d == nil || d.SQL == nil {
+		return nil
+	}
+	sqlBytes, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return fmt.Errorf("failed to read migration file %s: %w", schemaPath, err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := d.SQL.ExecContext(ctx, string(sqlBytes)); err != nil {
+		return fmt.Errorf("failed to apply schema migration: %w", err)
+	}
+	log.Println("✅ PostgreSQL schema migrations applied successfully.")
+	return nil
 }

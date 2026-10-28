@@ -25,6 +25,15 @@ import (
 func main() {
 	cfg := config.Load()
 
+	if !cfg.IsDevelopment() {
+		if cfg.JWTSecret == "" || cfg.JWTSecret == config.DefaultDevJWTSecret {
+			log.Fatalf("❌ FATAL: Refusing to start in production mode (%s) with default development JWT_SECRET.", cfg.Environment)
+		}
+		for _, warn := range cfg.ValidateForProduction() {
+			log.Printf("⚠️  Production Config Warning: %s", warn)
+		}
+	}
+
 	// 1. Database Connection (with automatic fallback to dummy data mode)
 	var sqlDB *sql.DB
 	dbConn, err := repository.Connect(cfg.DatabaseURL)
@@ -34,42 +43,57 @@ func main() {
 	} else {
 		sqlDB = dbConn.SQL
 		defer dbConn.SQL.Close()
+		if err := dbConn.RunMigrations("migrations/001_initial_schema.sql"); err != nil {
+			log.Printf("⚠️  Schema migration warning: %v", err)
+		}
 	}
 
 	// 2. Repositories
 	userRepo := repository.NewUserRepository(sqlDB)
+	userRepo.SetAllowMockOTP(cfg.IsDevelopment())
 	unitRepo := repository.NewUnitRepository(sqlDB)
 	walletRepo := repository.NewWalletRepository(sqlDB, userRepo)
 	distRepo := repository.NewDistributorRepository(sqlDB)
 
 	// 3. Services
-	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
+	notifService := service.NewNotificationService(cfg.TermiiAPIKey, cfg.TermiiSenderID, cfg.TermiiBaseURL)
+	notifService.SetDB(sqlDB)
+	authService := service.NewAuthService(userRepo, cfg.JWTSecret, notifService)
+	authService.SetDevelopmentMode(cfg.IsDevelopment())
 	paymentService := service.NewPaymentService(unitRepo, userRepo, walletRepo, cfg.PaystackSecretKey, cfg.PaystackPublicKey)
 	walletService := service.NewWalletService(walletRepo, userRepo, unitRepo, cfg.PaystackSecretKey, cfg.PaystackPublicKey)
+	walletService.SetDevelopmentMode(cfg.IsDevelopment())
+	paymentService.SetWalletService(walletService)
 	lifecycleService := service.NewLifecycleService(unitRepo, walletRepo)
 	defer lifecycleService.Stop()
 
 	// 4. Handlers
 	authHandler := handler.NewAuthHandler(authService, userRepo)
 	metaHandler := handler.NewMetaHandler(unitRepo)
-	unitHandler := handler.NewUnitHandler(unitRepo, userRepo, lifecycleService)
+	unitHandler := handler.NewUnitHandler(unitRepo, userRepo, walletRepo, lifecycleService)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
 	walletHandler := handler.NewWalletHandler(walletService)
 	distHandler := handler.NewDistributorHandler(distRepo, unitRepo)
+	notifHandler := handler.NewNotificationHandler(notifService, unitRepo)
+	uploadHandler := handler.NewUploadHandler(cfg.UploadDir, cfg.PublicBaseURL)
 
 	// 5. Router Setup
 	r := chi.NewRouter()
+	rateLimiter := middleware.NewRateLimiter()
 
-	// Global Middlewares
+	// Global Middlewares (Security, 3G Gzip Compression & Rate Limiting)
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.RealIP)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
+	r.Use(chimiddleware.Compress(5))
+	r.Use(middleware.SecurityHeaders)
+	r.Use(rateLimiter.Handler)
 	r.Use(chimiddleware.Timeout(60 * time.Second))
 
-	// CORS Setup
+	// CORS Setup (configured via ALLOWED_ORIGINS env var)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"},
+		AllowedOrigins:   cfg.AllowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "x-paystack-signature"},
 		ExposedHeaders:   []string{"Link"},
@@ -80,12 +104,25 @@ func main() {
 	// Context Auth Extractor Middleware
 	r.Use(middleware.AuthMiddleware(authService))
 
+	// Serve uploaded scale & dispute evidence photos with 3G cache headers
+	fileServer := http.StripPrefix("/uploads/", http.FileServer(http.Dir(cfg.UploadDir)))
+	r.Get("/uploads/*", func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		fileServer.ServeHTTP(w, req)
+	})
+
 	// API Routes
 	r.Route("/api", func(api chi.Router) {
 		// Health & Metadata (Public)
 		api.Get("/health", metaHandler.HealthCheck)
 		api.Get("/areas", metaHandler.GetAreas)
 		api.Get("/products", metaHandler.GetProducts)
+
+		// Authenticated Evidence & Scale Photo Upload
+		api.Group(func(authed chi.Router) {
+			authed.Use(middleware.RequireAuth)
+			authed.Post("/uploads", uploadHandler.UploadPhoto)
+		})
 
 		// Units (Public browsing)
 		api.Get("/units", unitHandler.ListUnits)
@@ -111,6 +148,7 @@ func main() {
 		api.Route("/wallet", func(w chi.Router) {
 			w.Use(middleware.RequireAuth)
 			w.Get("/", walletHandler.GetSummary)
+			w.Get("/resolve-account", walletHandler.ResolveAccount)
 			w.Post("/topup/initialize", walletHandler.InitializeTopUp)
 			w.Get("/topup/verify/{reference}", walletHandler.VerifyTopUp)
 			w.Post("/withdraw", walletHandler.Withdraw)
@@ -138,6 +176,7 @@ func main() {
 		api.Route("/member", func(m chi.Router) {
 			m.Use(middleware.RequireAuth)
 			m.Use(middleware.RequireRole(domain.RoleMember, domain.RoleUnitManager, domain.RoleAdmin))
+			m.Get("/units", unitHandler.GetMemberUnits)
 			m.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(`{"message":"Welcome to Member Portal API"}`))
 			})
@@ -149,9 +188,26 @@ func main() {
 			mgr.Use(middleware.RequireRole(domain.RoleUnitManager, domain.RoleAdmin))
 			mgr.Get("/units", unitHandler.GetManagedUnits)
 			mgr.Post("/units/verify-code", unitHandler.VerifyCollectionCode)
+			mgr.Post("/units/{id}/status", unitHandler.UpdateUnitStatus)
+			mgr.Post("/units/{id}/members/{memberId}/status", unitHandler.UpdateMemberStatus)
+			mgr.Get("/orders", distHandler.ListManagerOrders)
+			mgr.Post("/orders/{id}/confirm-receipt", distHandler.ConfirmManagerReceipt)
+			mgr.Get("/commissions", unitHandler.GetManagerCommissions)
+			mgr.Get("/disputes", unitHandler.ListDisputes)
+			mgr.Post("/disputes", unitHandler.CreateDispute)
+			mgr.Get("/notifications", notifHandler.ListLogs)
+			mgr.Post("/notifications/broadcast", notifHandler.Broadcast)
 			mgr.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(`{"message":"Welcome to Unit Manager Portal API"}`))
 			})
+		})
+
+		// Termii SMS & WhatsApp Notifications API (Manager & Admin)
+		api.Route("/notifications", func(ntf chi.Router) {
+			ntf.Use(middleware.RequireAuth)
+			ntf.Use(middleware.RequireRole(domain.RoleUnitManager, domain.RoleAdmin))
+			ntf.Get("/logs", notifHandler.ListLogs)
+			ntf.Post("/broadcast", notifHandler.Broadcast)
 		})
 
 		// 3. Distributor Wholesale Portal API
@@ -172,8 +228,18 @@ func main() {
 		api.Route("/admin", func(adm chi.Router) {
 			adm.Use(middleware.RequireAuth)
 			adm.Use(middleware.RequireRole(domain.RoleAdmin))
+			adm.Get("/overview", unitHandler.GetAdminOverview)
+			adm.Get("/security-audit", notifHandler.SecurityAudit)
 			adm.Get("/orders", distHandler.ListOrders)
 			adm.Post("/orders", distHandler.CreatePurchaseOrder)
+			adm.Post("/orders/{id}/dispatch", distHandler.DispatchOrder)
+			adm.Post("/orders/{id}/delivered", distHandler.MarkDelivered)
+			adm.Post("/units/{id}/status", unitHandler.UpdateUnitStatus)
+			adm.Post("/units/{id}/cancel", unitHandler.CancelUnitAndRefund)
+			adm.Get("/disputes", unitHandler.ListDisputes)
+			adm.Post("/disputes/{id}/resolve", unitHandler.ResolveDispute)
+			adm.Get("/withdrawals", walletHandler.ListWithdrawals)
+			adm.Post("/withdrawals/{id}/process", walletHandler.ProcessWithdrawal)
 			adm.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 				w.Write([]byte(`{"message":"Welcome to Admin Operations Portal API"}`))
 			})

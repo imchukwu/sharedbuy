@@ -556,9 +556,26 @@ export const WalletPage: React.FC = () => {
                     placeholder="0123456789"
                     value={accountNumber}
                     onChange={(e) => {
-                      setAccountNumber(e.target.value);
-                      if (e.target.value.length === 10 && !accountName) {
-                        setAccountName(user?.full_name || 'Account Holder');
+                      const val = e.target.value.replace(/\D/g, '');
+                      setAccountNumber(val);
+                      if (val.length === 10 && token) {
+                        fetch(
+                          `/api/wallet/resolve-account?bank_name=${encodeURIComponent(
+                            bankName
+                          )}&account_number=${encodeURIComponent(val)}`,
+                          { headers: { Authorization: `Bearer ${token}` } }
+                        )
+                          .then((r) => r.json())
+                          .then((data) => {
+                            if (data.account_name) {
+                              setAccountName(data.account_name);
+                            }
+                          })
+                          .catch(() => {
+                            setAccountName(user?.full_name || 'Account Holder');
+                          });
+                      } else if (val.length < 10) {
+                        setAccountName('');
                       }
                     }}
                     className="w-full p-2.5 rounded-xl border border-gray-300 font-mono text-sm"

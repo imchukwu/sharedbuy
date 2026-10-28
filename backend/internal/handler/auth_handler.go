@@ -56,12 +56,16 @@ func (h *AuthHandler) RequestOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// For convenience in dev, return the code and helpful hint
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"message":   "OTP sent successfully",
-		"phone":     req.Phone,
-		"debug_otp": code, // Can use 123456 as well
-	})
+	resp := map[string]interface{}{
+		"message": "OTP sent successfully",
+		"phone":   req.Phone,
+	}
+	// Only expose debug_otp in development/test environments
+	if h.authService.IsDevelopmentMode() {
+		resp["debug_otp"] = code
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {

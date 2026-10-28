@@ -21,13 +21,29 @@ import (
 type AuthService struct {
 	userRepo  *repository.UserRepository
 	jwtSecret []byte
+	notifSvc  *NotificationService
+	isDev     bool
 }
 
-func NewAuthService(userRepo *repository.UserRepository, jwtSecret string) *AuthService {
+func NewAuthService(userRepo *repository.UserRepository, jwtSecret string, notifSvc ...*NotificationService) *AuthService {
+	var ns *NotificationService
+	if len(notifSvc) > 0 {
+		ns = notifSvc[0]
+	}
 	return &AuthService{
 		userRepo:  userRepo,
 		jwtSecret: []byte(jwtSecret),
+		notifSvc:  ns,
+		isDev:     false,
 	}
+}
+
+func (s *AuthService) SetDevelopmentMode(isDev bool) {
+	s.isDev = isDev
+}
+
+func (s *AuthService) IsDevelopmentMode() bool {
+	return s.isDev
 }
 
 type TokenClaims struct {
@@ -61,12 +77,27 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone string) (string, err
 		return "", fmt.Errorf("failed to save OTP: %w", err)
 	}
 
-	// Console log OTP for local dev/testing
-	log.Printf("==================================================")
-	log.Printf("[OTP SERVICE] Verification code for %s: %s (Test mock: 123456)", phone, code)
-	log.Printf("==================================================")
+	// Only log raw OTP code in development mode; mask in production
+	if s.isDev {
+		log.Printf("==================================================")
+		log.Printf("[OTP SERVICE - DEV] Verification code for %s: %s (Test mock: 123456)", phone, code)
+		log.Printf("==================================================")
+	} else {
+		log.Printf("[OTP SERVICE] Dispatched 6-digit OTP to %s", maskPhone(phone))
+	}
+
+	if s.notifSvc != nil {
+		s.notifSvc.SendOTP(ctx, phone, code)
+	}
 
 	return code, nil
+}
+
+func maskPhone(phone string) string {
+	if len(phone) <= 6 {
+		return "***"
+	}
+	return phone[:4] + "****" + phone[len(phone)-3:]
 }
 
 func (s *AuthService) VerifyOTP(ctx context.Context, phone, code, fullName, areaID, referralCode string) (*AuthResult, error) {
@@ -78,8 +109,8 @@ func (s *AuthService) VerifyOTP(ctx context.Context, phone, code, fullName, area
 		return nil, errors.New("invalid or expired verification code")
 	}
 
-	// Clean up OTP code if not bypass
-	if code != "123456" {
+	// Always consume one-time OTP (keep 123456 reusable only in dev mode)
+	if !s.isDev || code != "123456" {
 		_ = s.userRepo.DeleteOTP(ctx, phone)
 	}
 
@@ -162,18 +193,11 @@ func (s *AuthService) AdminLogin(ctx context.Context, email, password string) (*
 		return nil, errors.New("access denied: account is not an administrator")
 	}
 
-	// Verify password
-	// For testing convenience, we also allow "Admin@123456" explicitly
-	passwordMatch := false
-	if password == "Admin@123456" {
-		passwordMatch = true
-	} else if user.PasswordHash != nil {
-		if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(password)); err == nil {
-			passwordMatch = true
-		}
+	// Verify password strictly using bcrypt hash comparison
+	if user.PasswordHash == nil || *user.PasswordHash == "" {
+		return nil, errors.New("invalid email or password")
 	}
-
-	if !passwordMatch {
+	if err := bcrypt.CompareHashAndPassword([]byte(*user.PasswordHash), []byte(password)); err != nil {
 		return nil, errors.New("invalid email or password")
 	}
 

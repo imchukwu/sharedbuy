@@ -15,7 +15,10 @@ import {
   Navigation,
   Loader2,
   Copy,
-  Check
+  Check,
+  Globe,
+  Minus,
+  Plus
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AuthModal } from '../../components/auth/AuthModal';
@@ -28,6 +31,7 @@ export const HomePage: React.FC = () => {
   const [selectedSort, setSelectedSort] = useState<string>('almost_full');
   const [loading, setLoading] = useState(true);
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
+  const [sharesCount, setSharesCount] = useState<number>(1);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [joinedSuccess, setJoinedSuccess] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -35,16 +39,29 @@ export const HomePage: React.FC = () => {
     collectionCode: string;
     sharingDate: string;
     amountKobo: number;
+    sharesCount: number;
     reference: string;
   } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
 
-  // Capture referral code from URL e.g. ?ref=REF-BABAGANA
+  // Capture referral code from URL e.g. ?ref=REF-BABAGANA and deep-linked unit ?unit=<id>
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const ref = urlParams.get('ref');
     if (ref) {
       localStorage.setItem('sb_referral_code', ref);
+    }
+    const deepUnitId = urlParams.get('unit');
+    if (deepUnitId) {
+      fetch(`/api/units/${deepUnitId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((u: Unit | null) => {
+          if (u) {
+            setSelectedUnit(u);
+            setSharesCount(1);
+          }
+        })
+        .catch(() => {});
     }
   }, []);
 
@@ -63,10 +80,10 @@ export const HomePage: React.FC = () => {
   };
 
   useEffect(() => {
-    // Fetch areas
+    // Fetch areas (Country -> State -> City -> Locality)
     fetch('/api/areas')
       .then((res) => res.json())
-      .then((data) => setAreas(data))
+      .then((data) => setAreas(data || []))
       .catch(() => {});
   }, []);
 
@@ -92,7 +109,7 @@ export const HomePage: React.FC = () => {
         },
         body: JSON.stringify({
           unit_id: selectedUnit.id,
-          shares_count: 1,
+          shares_count: sharesCount,
           callback_url: window.location.origin,
         }),
       });
@@ -144,6 +161,7 @@ export const HomePage: React.FC = () => {
         collectionCode: verifyData.collection_code,
         sharingDate: verifyData.sharing_date || selectedUnit!.sharing_date,
         amountKobo: verifyData.amount_kobo,
+        sharesCount: verifyData.member?.shares_count || sharesCount,
         reference: reference,
       });
       setJoinedSuccess(true);
@@ -167,7 +185,7 @@ export const HomePage: React.FC = () => {
         },
         body: JSON.stringify({
           unit_id: selectedUnit.id,
-          shares_count: 1,
+          shares_count: sharesCount,
         }),
       });
 
@@ -181,7 +199,8 @@ export const HomePage: React.FC = () => {
       setPaymentSuccessData({
         collectionCode: data.collection_code,
         sharingDate: data.sharing_date || selectedUnit.sharing_date,
-        amountKobo: selectedUnit.price_per_share_quoted_kobo,
+        amountKobo: selectedUnit.price_per_share_quoted_kobo * sharesCount,
+        sharesCount: sharesCount,
         reference: `wpay_${Date.now().toString().slice(-6)}`,
       });
       setJoinedSuccess(true);
@@ -196,18 +215,28 @@ export const HomePage: React.FC = () => {
 
   const handleJoinClick = (unit: Unit) => {
     setSelectedUnit(unit);
+    setSharesCount(1);
+    setJoinedSuccess(false);
+    setPaymentSuccessData(null);
   };
 
   const handleShareWhatsApp = (unit: Unit) => {
     const refCode = user?.referral_code || user?.id || '';
     const refParam = refCode ? `&ref=${refCode}` : '';
+    const localityLabel = unit.area_locality ? `${unit.area_locality}, ${unit.area_city}` : unit.area_city;
     const text = encodeURIComponent(
-      `Join our group purchase for ${unit.product_name} (${unit.share_size}) in ${unit.area_city}! Price is ${formatKobo(
+      `Join our group purchase for ${unit.product_name} (${unit.share_size}) in ${localityLabel}! Price is ${formatKobo(
         unit.price_per_share_quoted_kobo
       )} instead of retail price ${formatKobo(unit.estimated_market_price_kobo)}. Check it out on SharedBuy: ${window.location.origin}/?unit=${unit.id}${refParam}`
     );
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
+
+  const remainingShares = selectedUnit
+    ? Math.max(1, selectedUnit.max_members - (selectedUnit.current_shares_count || selectedUnit.current_members_count))
+    : 1;
+  const totalSelectedPriceKobo = selectedUnit ? selectedUnit.price_per_share_quoted_kobo * sharesCount : 0;
+  const totalSelectedSavingsKobo = selectedUnit ? selectedUnit.estimated_savings_kobo * sharesCount : 0;
 
   return (
     <div className="pb-20 max-w-xl mx-auto px-3.5 pt-3">
@@ -218,10 +247,10 @@ export const HomePage: React.FC = () => {
             <Sparkles size={12} /> Save 25% – 35% on food staples
           </div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight leading-snug">
-            Buy bulk rice, beans & oil together with neighbors.
+            Buy bulk rice, milk, crayfish & oil together with neighbors.
           </h1>
           <p className="text-xs text-emerald-100/90 mt-1.5 leading-relaxed">
-            Direct from millers to your local estate coordinator. Split upfront, collect together.
+            Direct from millers to your local estate coordinator in Piwoyi, Lugbe & across Abuja. Split upfront, collect together.
           </p>
 
           <div className="mt-3.5 flex items-center gap-2">
@@ -273,15 +302,21 @@ export const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* 3. Filter Bar (Area & Sort) */}
+      {/* 3. Filter Bar (Country / State / Locality Hierarchy & Sort) */}
       <section id="browse-units" className="mb-3 scroll-mt-16">
         <div className="flex items-center justify-between gap-2 mb-2">
-          <h2 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
-            Active Buying Units
-            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-              {units.length}
-            </span>
-          </h2>
+          <div>
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-1.5">
+              Active Buying Units
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                {units.length}
+              </span>
+            </h2>
+            <div className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
+              <Globe size={11} className="text-emerald-700" />
+              <span>Nigeria (NG) • FCT, Abuja Localities</span>
+            </div>
+          </div>
 
           {/* Sort Selector */}
           <select
@@ -295,29 +330,38 @@ export const HomePage: React.FC = () => {
           </select>
         </div>
 
-        {/* Area Pills */}
+        {/* Locality Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
           <button
             onClick={() => setSelectedArea('')}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
               selectedArea === ''
                 ? 'bg-emerald-800 text-white shadow-2xs'
                 : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
             }`}
           >
-            All Locations
+            All Localities (FCT)
           </button>
           {areas.map((a) => (
             <button
               key={a.id}
               onClick={() => setSelectedArea(a.id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
                 selectedArea === a.id
                   ? 'bg-emerald-800 text-white shadow-2xs'
                   : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
               }`}
             >
-              {a.city} ({a.name.split('&')[0].trim()})
+              <span>{a.locality || a.city}</span>
+              {a.launch_phase === 'LIVE' && (
+                <span
+                  className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                    selectedArea === a.id ? 'bg-emerald-600 text-white' : 'bg-emerald-100 text-emerald-800'
+                  }`}
+                >
+                  Launch
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -333,16 +377,18 @@ export const HomePage: React.FC = () => {
       ) : units.length === 0 ? (
         <div className="bg-white rounded-2xl p-8 text-center border border-gray-200">
           <AlertCircle size={32} className="mx-auto text-gray-400 mb-2" />
-          <h3 className="font-bold text-gray-800 text-sm">No units found in this area</h3>
-          <p className="text-xs text-gray-500 mt-1">Try selecting another location or check back soon.</p>
+          <h3 className="font-bold text-gray-800 text-sm">No active units in this locality yet</h3>
+          <p className="text-xs text-gray-500 mt-1">
+            Select "All Localities" or Piwoyi to join open buying units right now.
+          </p>
         </div>
       ) : (
         <div className="space-y-3.5">
-          {units.map((unit) => {
-            const progressPercent = Math.min(
-              100,
-              Math.round((unit.current_members_count / unit.max_members) * 100)
-            );
+          {units
+            .filter((u) => u.status !== 'PENDING_ADMIN_REVIEW' && u.status !== 'DRAFT')
+            .map((unit) => {
+              const sharesClaimed = unit.current_shares_count || unit.current_members_count;
+              const progressPercent = Math.min(100, Math.round((sharesClaimed / unit.max_members) * 100));
 
             return (
               <div
@@ -350,11 +396,16 @@ export const HomePage: React.FC = () => {
                 className="bg-white rounded-2xl border border-gray-200/80 shadow-2xs overflow-hidden transition-all hover:shadow-md hover:border-emerald-300"
               >
                 <div className="p-4">
-                  {/* Top Row: Category + Status Badge */}
+                  {/* Top Row: Category + Locality + Status Badge */}
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
-                      {unit.product_category}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
+                        {unit.product_category}
+                      </span>
+                      <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-md">
+                        {unit.area_locality || 'Piwoyi'}, {unit.area_state || 'FCT'}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[11px] font-bold text-gray-500 flex items-center gap-1">
                         <Clock size={12} /> {formatTimeLeft(unit.payment_deadline)}
@@ -411,12 +462,12 @@ export const HomePage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Progress Bar (Members joined) */}
+                  {/* Progress Bar (Shares claimed) */}
                   <div className="mt-3.5 pt-3 border-t border-gray-100">
                     <div className="flex items-center justify-between text-xs mb-1.5">
                       <span className="font-semibold text-gray-700 flex items-center gap-1">
                         <Users size={13} className="text-gray-400" />
-                        {unit.current_members_count} of {unit.max_members} members joined
+                        {sharesClaimed} of {unit.max_members} shares claimed
                       </span>
                       <span className="font-bold text-emerald-700">{progressPercent}%</span>
                     </div>
@@ -481,15 +532,20 @@ export const HomePage: React.FC = () => {
         </div>
       )}
 
-      {/* 5. Unit Details & Cost Breakdown Modal */}
+      {/* 5. Unit Details & Checkout Modal */}
       {selectedUnit && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-xs">
           <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl border border-gray-100 max-h-[92vh] overflow-y-auto">
             <div className="flex items-start justify-between pb-3 border-b border-gray-100">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
-                  {selectedUnit.product_category}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md">
+                    {selectedUnit.product_category}
+                  </span>
+                  <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-md">
+                    {selectedUnit.area_locality || 'Piwoyi'}, {selectedUnit.area_state || 'FCT'}
+                  </span>
+                </div>
                 <h3 className="text-base font-bold text-gray-900 mt-1">
                   {selectedUnit.product_name} ({selectedUnit.share_size})
                 </h3>
@@ -507,7 +563,11 @@ export const HomePage: React.FC = () => {
                 </div>
               </div>
               <button
-                onClick={() => { setSelectedUnit(null); setJoinedSuccess(false); setPaymentSuccessData(null); }}
+                onClick={() => {
+                  setSelectedUnit(null);
+                  setJoinedSuccess(false);
+                  setPaymentSuccessData(null);
+                }}
                 className="p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 cursor-pointer"
               >
                 ✕
@@ -522,7 +582,8 @@ export const HomePage: React.FC = () => {
                 <div>
                   <h4 className="text-lg font-bold text-gray-900">Payment Confirmed & Share Secured!</h4>
                   <p className="text-xs text-gray-600 mt-1 max-w-sm mx-auto">
-                    Your contribution of <strong>{formatKobo(paymentSuccessData.amountKobo)}</strong> is held safely in escrow.
+                    Your contribution of <strong>{formatKobo(paymentSuccessData.amountKobo)}</strong> for{' '}
+                    <strong>{paymentSuccessData.sharesCount} share(s)</strong> is held safely in escrow.
                   </p>
                 </div>
 
@@ -559,19 +620,31 @@ export const HomePage: React.FC = () => {
                     <span className="font-mono text-gray-800">{paymentSuccessData.reference}</span>
                   </div>
                   <div className="flex justify-between text-gray-600">
+                    <span>Shares Claimed</span>
+                    <span className="font-bold text-gray-900">
+                      {paymentSuccessData.sharesCount} × {selectedUnit.share_size}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
                     <span>Sharing Date</span>
                     <span className="font-semibold text-emerald-800">{formatDate(paymentSuccessData.sharingDate)}</span>
                   </div>
                   <div className="flex justify-between text-gray-600">
                     <span>Pickup Hub</span>
-                    <span className="font-semibold text-gray-800 truncate max-w-[200px]">{selectedUnit.collection_landmark}</span>
+                    <span className="font-semibold text-gray-800 truncate max-w-[200px]">
+                      {selectedUnit.collection_landmark}
+                    </span>
                   </div>
                 </div>
 
                 {/* Actions */}
                 <div className="grid grid-cols-2 gap-2.5 pt-1">
                   <button
-                    onClick={() => { setSelectedUnit(null); setJoinedSuccess(false); setPaymentSuccessData(null); }}
+                    onClick={() => {
+                      setSelectedUnit(null);
+                      setJoinedSuccess(false);
+                      setPaymentSuccessData(null);
+                    }}
                     className="w-full py-2.5 rounded-xl border border-gray-300 text-gray-700 font-semibold text-xs hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     Close
@@ -587,29 +660,62 @@ export const HomePage: React.FC = () => {
               </div>
             ) : (
               <div className="py-3 space-y-4">
-                {/* Member Purchase Summary Card */}
+                {/* Member Purchase Summary & Share Quantity Selector */}
                 <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 space-y-3 text-xs">
                   <div className="flex items-baseline justify-between">
                     <div>
                       <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                        Share Price ({selectedUnit.share_size})
+                        Total Price ({sharesCount} × {selectedUnit.share_size})
                       </div>
                       <div className="text-xl font-black text-emerald-900 mt-0.5">
-                        {formatKobo(selectedUnit.price_per_share_quoted_kobo)}
+                        {formatKobo(totalSelectedPriceKobo)}
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white px-2.5 py-1 rounded-full border border-emerald-200/80 shadow-2xs">
                         <Sparkles size={11} className="text-emerald-600" />
-                        Save ~{formatKobo(selectedUnit.estimated_savings_kobo)}
+                        Save ~{formatKobo(totalSelectedSavingsKobo)}
                       </div>
-                      <div className="text-[10px] text-gray-500 mt-1">vs ~{formatKobo(selectedUnit.estimated_market_price_kobo)} retail</div>
+                      <div className="text-[10px] text-gray-500 mt-1">
+                        vs ~{formatKobo(selectedUnit.estimated_market_price_kobo * sharesCount)} retail
+                      </div>
                     </div>
                   </div>
 
+                  {/* Share Quantity Picker */}
+                  {selectedUnit.status === 'OPEN' && remainingShares > 1 && (
+                    <div className="pt-2.5 border-t border-emerald-200/60 flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-gray-800">Number of Shares:</span>
+                        <span className="text-[11px] text-gray-500 ml-1">({remainingShares} left)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSharesCount(Math.max(1, sharesCount - 1))}
+                          disabled={sharesCount <= 1}
+                          className="w-7 h-7 rounded-lg bg-white border border-emerald-200 flex items-center justify-center text-emerald-900 disabled:opacity-40 cursor-pointer"
+                        >
+                          <Minus size={13} />
+                        </button>
+                        <span className="font-black text-sm text-emerald-950 w-6 text-center">{sharesCount}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSharesCount(Math.min(remainingShares, sharesCount + 1))}
+                          disabled={sharesCount >= remainingShares}
+                          className="w-7 h-7 rounded-lg bg-white border border-emerald-200 flex items-center justify-center text-emerald-900 disabled:opacity-40 cursor-pointer"
+                        >
+                          <Plus size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="pt-2.5 border-t border-emerald-200/60 flex items-center gap-2 text-[11px] text-emerald-800">
                     <CheckCircle size={14} className="text-emerald-600 shrink-0" />
-                    <span><strong>100% Escrow Protection:</strong> Capital held securely until unit fills. Instant auto-refund if not completed.</span>
+                    <span>
+                      <strong>100% Escrow Protection:</strong> Capital held securely until unit fills. Instant auto-refund if not completed.
+                    </span>
                   </div>
                 </div>
 
@@ -617,7 +723,9 @@ export const HomePage: React.FC = () => {
                 <div className="bg-white p-3 rounded-xl border border-gray-200 text-xs space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500">Unit Coordinator</span>
-                    <span className="font-bold text-gray-800">{selectedUnit.manager_name} ({selectedUnit.manager_rating}★)</span>
+                    <span className="font-bold text-gray-800">
+                      {selectedUnit.manager_name} ({selectedUnit.manager_rating}★)
+                    </span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-gray-500">Sharing / Collection Date</span>
@@ -637,9 +745,7 @@ export const HomePage: React.FC = () => {
                         <MapPin size={13} className="text-emerald-700 shrink-0" />
                         <span>Pickup Hub: {selectedUnit.collection_landmark}</span>
                       </div>
-                      <p className="text-[11px] text-gray-600 leading-snug">
-                        {selectedUnit.collection_address}
-                      </p>
+                      <p className="text-[11px] text-gray-600 leading-snug">{selectedUnit.collection_address}</p>
                     </div>
                     <a
                       href={selectedUnit.collection_map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedUnit.collection_address)}`}
@@ -666,7 +772,7 @@ export const HomePage: React.FC = () => {
                   ) : (
                     <>
                       {/* Option A: Pay with Wallet (if sufficient balance) */}
-                      {(user.wallet_balance_kobo || 0) >= selectedUnit.price_per_share_quoted_kobo ? (
+                      {(user.wallet_balance_kobo || 0) >= totalSelectedPriceKobo ? (
                         <button
                           disabled={paymentLoading || selectedUnit.status !== 'OPEN'}
                           onClick={handlePayWithWallet}
@@ -679,7 +785,10 @@ export const HomePage: React.FC = () => {
                             </>
                           ) : (
                             <>
-                              <span>Pay with Wallet ({formatKobo(user.wallet_balance_kobo || 0)} available)</span>
+                              <span>
+                                Pay {formatKobo(totalSelectedPriceKobo)} with Wallet (
+                                {formatKobo(user.wallet_balance_kobo || 0)} available)
+                              </span>
                               <ArrowRight size={14} />
                             </>
                           )}
@@ -701,7 +810,7 @@ export const HomePage: React.FC = () => {
                         disabled={paymentLoading || selectedUnit.status !== 'OPEN'}
                         onClick={handleJoinAndPay}
                         className={`w-full py-3 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer border ${
-                          (user.wallet_balance_kobo || 0) >= selectedUnit.price_per_share_quoted_kobo
+                          (user.wallet_balance_kobo || 0) >= totalSelectedPriceKobo
                             ? 'bg-white hover:bg-gray-50 text-emerald-900 border-emerald-300'
                             : 'bg-emerald-700 hover:bg-emerald-800 text-white border-transparent shadow-md'
                         }`}
@@ -713,7 +822,9 @@ export const HomePage: React.FC = () => {
                           </>
                         ) : (
                           <>
-                            <span>Pay with Card / Bank Transfer (Paystack)</span>
+                            <span>
+                              Pay {formatKobo(totalSelectedPriceKobo)} with Card / Transfer (Paystack)
+                            </span>
                             <ArrowRight size={14} />
                           </>
                         )}

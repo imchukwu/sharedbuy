@@ -14,6 +14,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,11 +26,16 @@ type PaymentService struct {
 	unitRepo          *repository.UnitRepository
 	userRepo          *repository.UserRepository
 	walletRepo        *repository.WalletRepository
+	walletService     *WalletService
 	paystackSecretKey string
 	paystackPublicKey string
 	httpClient        *http.Client
 	pendingPayments   map[string]PendingPayment
 	mu                sync.RWMutex
+}
+
+func (s *PaymentService) SetWalletService(ws *WalletService) {
+	s.walletService = ws
 }
 
 type PendingPayment struct {
@@ -131,6 +137,21 @@ func (s *PaymentService) InitializePayment(ctx context.Context, userID string, r
 	}
 	s.mu.Unlock()
 
+	if s.walletRepo != nil {
+		_ = s.walletRepo.SavePaymentRecord(ctx, repository.PaymentRecord{
+			UserID:      user.ID,
+			UnitID:      unit.ID,
+			UserName:    user.FullName,
+			UserPhone:   user.Phone,
+			UserEmail:   email,
+			SharesCount: req.SharesCount,
+			ActionType:  "UNIT_JOIN",
+			AmountKobo:  amountKobo,
+			GatewayRef:  ref,
+			Status:      "INITIALIZED",
+		})
+	}
+
 	// If Paystack Secret Key is configured, initialize with Paystack API
 	if s.paystackSecretKey != "" && s.paystackSecretKey != "mock" {
 		payload := map[string]interface{}{
@@ -212,14 +233,46 @@ func (s *PaymentService) InitializePayment(ctx context.Context, userID string, r
 func (s *PaymentService) VerifyPayment(ctx context.Context, reference string) (*VerifyPaymentResponse, error) {
 	s.mu.Lock()
 	pending, exists := s.pendingPayments[reference]
+	s.mu.Unlock()
+
+	if !exists && s.walletRepo != nil {
+		if dbRec, err := s.walletRepo.GetPaymentRecordByRef(ctx, reference); err == nil && dbRec != nil {
+			pending = PendingPayment{
+				Reference:   dbRec.GatewayRef,
+				UnitID:      dbRec.UnitID,
+				UserID:      dbRec.UserID,
+				UserName:    dbRec.UserName,
+				UserPhone:   dbRec.UserPhone,
+				UserEmail:   dbRec.UserEmail,
+				SharesCount: dbRec.SharesCount,
+				AmountKobo:  dbRec.AmountKobo,
+				Status:      dbRec.Status,
+				CreatedAt:   dbRec.CreatedAt,
+			}
+			if dbRec.Status == "SUCCESS" && dbRec.CollectionCode != "" {
+				pending.Member = &domain.UnitMember{
+					UnitID:           dbRec.UnitID,
+					UserID:           dbRec.UserID,
+					UserName:         dbRec.UserName,
+					UserPhone:        dbRec.UserPhone,
+					SharesCount:      dbRec.SharesCount,
+					AmountPaidKobo:   dbRec.AmountKobo,
+					PaymentStatus:    domain.PaymentStatusPaid,
+					CollectionStatus: domain.CollectionStatusPending,
+					CollectionCode:   dbRec.CollectionCode,
+					JoinedAt:         dbRec.CreatedAt,
+				}
+			}
+			exists = true
+		}
+	}
+
 	if !exists {
-		s.mu.Unlock()
 		return nil, errors.New("payment reference not found")
 	}
 
 	// Idempotency: if already fulfilled, return saved member
 	if pending.Status == "SUCCESS" && pending.Member != nil {
-		s.mu.Unlock()
 		unit, _ := s.unitRepo.GetUnitByID(ctx, pending.UnitID)
 		var sharingDate time.Time
 		if unit != nil {
@@ -234,7 +287,6 @@ func (s *PaymentService) VerifyPayment(ctx context.Context, reference string) (*
 			SharingDate:    sharingDate,
 		}, nil
 	}
-	s.mu.Unlock()
 
 	// If Paystack Secret Key is configured, verify with Paystack API
 	if s.paystackSecretKey != "" && s.paystackSecretKey != "mock" {
@@ -304,6 +356,22 @@ func (s *PaymentService) VerifyPayment(ctx context.Context, reference string) (*
 	s.pendingPayments[reference] = pending
 	s.mu.Unlock()
 
+	if s.walletRepo != nil {
+		_ = s.walletRepo.SavePaymentRecord(ctx, repository.PaymentRecord{
+			UserID:         pending.UserID,
+			UnitID:         pending.UnitID,
+			UserName:       pending.UserName,
+			UserPhone:      pending.UserPhone,
+			UserEmail:      pending.UserEmail,
+			SharesCount:    pending.SharesCount,
+			ActionType:     "UNIT_JOIN",
+			AmountKobo:     pending.AmountKobo,
+			GatewayRef:     reference,
+			Status:         "SUCCESS",
+			CollectionCode: collectionCode,
+		})
+	}
+
 	log.Printf("✅ Payment fulfilled: ref=%s, unit=%s, user=%s, code=%s", reference, pending.UnitID, pending.UserID, collectionCode)
 
 	// Award referral bonus if member was referred
@@ -341,6 +409,10 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, signature string, pa
 			Reference string `json:"reference"`
 			Status    string `json:"status"`
 			Amount    int64  `json:"amount"`
+			Metadata  struct {
+				UserID string `json:"user_id"`
+				Action string `json:"action"`
+			} `json:"metadata"`
 		} `json:"data"`
 	}
 
@@ -348,10 +420,25 @@ func (s *PaymentService) HandleWebhook(ctx context.Context, signature string, pa
 		return err
 	}
 
+	ref := event.Data.Reference
 	if event.Event == "charge.success" && event.Data.Status == "success" {
-		log.Printf("🔔 Paystack Webhook received charge.success: ref=%s", event.Data.Reference)
-		_, err := s.VerifyPayment(ctx, event.Data.Reference)
+		log.Printf("🔔 Paystack Webhook received charge.success: ref=%s, action=%s", ref, event.Data.Metadata.Action)
+		// Route Wallet Top-Up webhooks to WalletService
+		if strings.HasPrefix(ref, "wtop_") || event.Data.Metadata.Action == "WALLET_TOPUP" {
+			if s.walletService != nil {
+				_, err := s.walletService.VerifyTopUp(ctx, event.Data.Metadata.UserID, ref)
+				return err
+			}
+		}
+		_, err := s.VerifyPayment(ctx, ref)
 		return err
+	}
+
+	// Handle Paystack Transfer payout status webhooks
+	if event.Event == "transfer.success" && s.walletService != nil && strings.HasPrefix(ref, "wdr-") {
+		_, _ = s.walletService.ProcessWithdrawal(ctx, ref, "COMPLETED")
+	} else if (event.Event == "transfer.failed" || event.Event == "transfer.reversed") && s.walletService != nil && strings.HasPrefix(ref, "wdr-") {
+		_, _ = s.walletService.ProcessWithdrawal(ctx, ref, "REJECTED")
 	}
 
 	return nil

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#065f46" />
+    <title>SharedBuy — Offline Pickup Code Vault</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #f8faf8;
+        color: #111827;
+        padding: 20px;
+        max-width: 520px;
+        margin: 0 auto;
+      }
+      .card {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 20px;
+        padding: 20px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      }
+      .badge {
+        display: inline-block;
+        background: #fef3c7;
+        color: #92400e;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 999px;
+        margin-bottom: 10px;
+      }
+      h1 {
+        font-size: 18px;
+        font-weight: 800;
+        color: #064e3b;
+        margin-bottom: 6px;
+      }
+      p {
+        font-size: 13px;
+        color: #4b5563;
+        line-height: 1.5;
+      }
+      .code-box {
+        margin-top: 12px;
+        padding: 14px;
+        border-radius: 14px;
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+      }
+      .code {
+        font-family: monospace;
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: 4px;
+        color: #065f46;
+        margin-top: 4px;
+      }
+      .btn {
+        display: block;
+        width: 100%;
+        text-align: center;
+        background: #047857;
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 13px;
+        padding: 12px;
+        border-radius: 12px;
+        text-decoration: none;
+        border: none;
+        cursor: pointer;
+        margin-top: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <span class="badge">⚡ OFFLINE / 3G DATA SAVER MODE</span>
+      <h1>You're currently offline</h1>
+      <p>
+        No worries! SharedBuy saves your 6-digit collection codes on your phone so you can still
+        show them to your Hub Coordinator at Piwoyi or Lugbe even without mobile data.
+      </p>
+      <button class="btn" onclick="window.location.reload()">Retry Connection</button>
+    </div>
+
+    <div class="card">
+      <h1 style="font-size: 15px">Saved Pickup Codes on This Device</h1>
+      <div id="offline-codes">
+        <div class="code-box">
+          <div style="font-size: 12px; font-weight: 700; color: #111827">
+            Mama Gold 50kg Parboiled Rice (5kg Share)
+          </div>
+          <div style="font-size: 11px; color: #4b5563">
+            Hub: 16 Biana street, New Extension, Piwoyi
+          </div>
+          <div class="code">384912</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      try {
+        var raw = localStorage.getItem('sb_cached_bookings');
+        if (raw) {
+          var list = JSON.parse(raw);
+          if (Array.isArray(list) && list.length > 0) {
+            var container = document.getElementById('offline-codes');
+            container.innerHTML = list
+              .map(function (b) {
+                var prod = (b.unit && b.unit.product_name) || 'Staple Share';
+                var lm = (b.unit && b.unit.collection_landmark) || 'Piwoyi Hub';
+                return (
+                  '<div class="code-box">' +
+                  '<div style="font-size:12px;font-weight:700;color:#111827">' +
+                  prod +
+                  ' (' +
+                  (b.shares_count || 1) +
+                  ' share)</div>' +
+                  '<div style="font-size:11px;color:#4b5563">Hub: ' +
+                  lm +
+                  '</div>' +
+                  '<div class="code">' +
+                  (b.collection_code || '384912') +
+                  '</div>' +
+                  '</div>'
+                );
+              })
+              .join('');
+          }
+        }
+      } catch (e) {}
+    </script>
+  </body>
+</html>
+
