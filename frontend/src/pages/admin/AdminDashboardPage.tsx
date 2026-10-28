@@ -126,48 +126,48 @@ export const AdminDashboardPage: React.FC = () => {
           {/* Unit Lifecycle Table */}
           <div className="bg-white rounded-2xl border border-gray-200/80 shadow-2xs overflow-hidden">
             <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">All Active Platform Units</h2>
-              <span className="text-xs text-gray-400">8 Units tracked</span>
+              <h2 className="text-xs font-bold text-gray-700 uppercase tracking-wider">All Active Platform Units (Piwoyi, Abuja)</h2>
+              <span className="text-xs text-gray-400">4 Units Active</span>
             </div>
 
             <div className="divide-y divide-gray-100 text-xs">
               <div className="p-3.5 flex items-center justify-between hover:bg-gray-50">
                 <div>
-                  <div className="font-bold text-gray-900">Premium Parboiled Rice (50kg) • Maiduguri Hub</div>
-                  <div className="text-[11px] text-gray-500">Mgr: Aisha Bello • 16/20 members joined (80%)</div>
+                  <div className="font-bold text-gray-900">Mama Gold Premium Rice (50kg Bag)</div>
+                  <div className="text-[11px] text-gray-500">16 Biana street, New Extension • Mgr: Aisha Bello • 8/10 members (80%)</div>
                 </div>
                 <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                  OPEN (ALMOST FULL)
+                </span>
+              </div>
+
+              <div className="p-3.5 flex items-center justify-between hover:bg-gray-50">
+                <div>
+                  <div className="font-bold text-gray-900">Lactorich Full Cream Powdered Milk (25kg Bag)</div>
+                  <div className="text-[11px] text-gray-500">Behind Salam Salam • Mgr: Fatima Mohammed • 5/10 members (50%)</div>
+                </div>
+                <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 font-bold text-[10px]">
                   OPEN
                 </span>
               </div>
 
               <div className="p-3.5 flex items-center justify-between hover:bg-gray-50">
                 <div>
-                  <div className="font-bold text-gray-900">King’s Pure Cooking Oil (25L) • Ikeja Hub</div>
-                  <div className="text-[11px] text-gray-500">Mgr: Chidinma Eze • 10/10 members joined (100%)</div>
-                </div>
-                <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 font-bold text-[10px]">
-                  FULL (PAYMENT CLOSED)
-                </span>
-              </div>
-
-              <div className="p-3.5 flex items-center justify-between hover:bg-gray-50">
-                <div>
-                  <div className="font-bold text-gray-900">Honey Beans (50kg) • Kano Sabon Gari</div>
-                  <div className="text-[11px] text-gray-500">Mgr: Ibrahim Danladi • 4/10 members joined (40%)</div>
+                  <div className="font-bold text-gray-900">Oron Premium Dried Crayfish (Large Bag)</div>
+                  <div className="text-[11px] text-gray-500">Behind Sarah Dominion School • Mgr: Ibrahim Danladi • 7/8 members (88%)</div>
                 </div>
                 <span className="px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 font-bold text-[10px]">
-                  OPEN (ENDING SOON)
+                  OPEN (ALMOST FULL)
                 </span>
               </div>
 
               <div className="p-3.5 flex items-center justify-between hover:bg-gray-50">
                 <div>
-                  <div className="font-bold text-gray-900">Parboiled Rice (50kg) • Bulumkutu Maiduguri</div>
-                  <div className="text-[11px] text-gray-500">Mgr: Fatima Mohammed • Goods Weighed & Delivered</div>
+                  <div className="font-bold text-gray-900">Direct Mill Pure Red Palm Oil (25L Gallon)</div>
+                  <div className="text-[11px] text-gray-500">By Bakery, Piwoyi Main Road • Mgr: Chidinma Eze • 4/5 members (80%)</div>
                 </div>
                 <span className="px-2.5 py-1 rounded-full bg-purple-100 text-purple-800 font-bold text-[10px]">
-                  READY FOR COLLECTION
+                  OPEN (ALMOST FULL)
                 </span>
               </div>
             </div>
@@ -188,20 +188,20 @@ export const AdminDashboardPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
               <div className="font-bold text-gray-900">Northern Agro Millers</div>
-              <div className="text-[11px] text-gray-500">Maiduguri • Rating: 4.90★</div>
+              <div className="text-[11px] text-gray-500">Direct Mill Dispatch • Rating: 4.90★</div>
               <div className="mt-2 text-emerald-800 font-bold">Rice: ₦75,000 / bag</div>
             </div>
 
             <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
-              <div className="font-bold text-gray-900">Dawanau Grain Merchants</div>
-              <div className="text-[11px] text-gray-500">Kano Hub • Rating: 4.85★</div>
-              <div className="mt-2 text-emerald-800 font-bold">Beans: ₦68,000 / bag</div>
+              <div className="font-bold text-gray-900">Dawanau & Coastal Merchants</div>
+              <div className="text-[11px] text-gray-500">National Grain & Seafood Depot • Rating: 4.85★</div>
+              <div className="mt-2 text-emerald-800 font-bold">Crayfish: ₦48,000 / bag</div>
             </div>
 
             <div className="p-3 rounded-xl bg-gray-50 border border-gray-200">
-              <div className="font-bold text-gray-900">Eko Commodities Depot</div>
-              <div className="text-[11px] text-gray-500">Lagos • Rating: 4.75★</div>
-              <div className="mt-2 text-emerald-800 font-bold">Oil: ₦45,000 / 25L</div>
+              <div className="font-bold text-gray-900">Eko & Eastern Oil Palm Depot</div>
+              <div className="text-[11px] text-gray-500">Oils & Dairy Wholesalers • Rating: 4.75★</div>
+              <div className="mt-2 text-emerald-800 font-bold">Palm Oil: ₦35,000 / 25L</div>
             </div>
           </div>
         </div>
@@ -209,29 +209,145 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* Tab: Finance */}
       {activeTab === 'finance' && (
-        <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-2xs space-y-4 text-xs">
-          <h2 className="font-bold text-sm text-gray-900">Unit Financial Reconciliation (Exact Ledger Rule 6)</h2>
-          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 space-y-1.5 text-emerald-950">
-            <div className="font-bold">Reconciled Unit: Honey Beans Lagos #04</div>
-            <div className="flex justify-between">
-              <span>Total Member Capital Collected:</span>
-              <span className="font-bold">₦89,500</span>
+        <div className="bg-white rounded-2xl p-5 border border-gray-200/80 shadow-2xs space-y-5 text-xs">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-800 bg-purple-50 px-2.5 py-0.5 rounded-md">
+              Internal Admin Only
+            </span>
+            <h2 className="font-bold text-sm text-gray-900 mt-1">Unit Internal Economics & Cost Breakdown Ledger</h2>
+            <p className="text-gray-500 text-[11px] mt-0.5">
+              Wholesale distributor splits, platform escrow fees (4%), manager commissions (3%), and safety buffers.
+            </p>
+          </div>
+
+          {/* Unit Cost Breakdown Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            {/* Unit 1 Economics */}
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
+              <div className="font-bold text-gray-900 text-xs flex justify-between items-center">
+                <span>Mama Gold Rice (50kg Bag)</span>
+                <span className="text-[11px] text-emerald-700 font-bold">16 Biana St, Piwoyi</span>
+              </div>
+              <div className="text-[10px] text-gray-400">10 shares of 5kg • Quoted Member Price: ₦8,750 / share</div>
+
+              <div className="pt-2 border-t border-gray-200 space-y-1 text-[11px] text-gray-600">
+                <div className="flex justify-between">
+                  <span>Wholesale Supplier Cost (76%):</span>
+                  <span className="font-semibold text-gray-800">₦6,650 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Distributor Logistics Share (15%):</span>
+                  <span className="font-semibold text-gray-800">₦1,312 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Platform Fee (4%):</span>
+                  <span className="font-semibold text-emerald-700">₦266 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Manager Commission (3%):</span>
+                  <span className="font-semibold text-purple-700">₦200 / share</span>
+                </div>
+                <div className="flex justify-between text-amber-700">
+                  <span>Safety Buffer Reserve (4%):</span>
+                  <span className="font-bold">₦322 / share</span>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Actual Wholesale Supplier Cost Paid:</span>
-              <span className="font-bold">₦68,000</span>
+
+            {/* Unit 2 Economics */}
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
+              <div className="font-bold text-gray-900 text-xs flex justify-between items-center">
+                <span>Lactorich Powdered Milk (25kg Bag)</span>
+                <span className="text-[11px] text-emerald-700 font-bold">Behind Salam Salam, Piwoyi</span>
+              </div>
+              <div className="text-[10px] text-gray-400">10 shares of 2.5kg • Quoted Member Price: ₦9,200 / share</div>
+
+              <div className="pt-2 border-t border-gray-200 space-y-1 text-[11px] text-gray-600">
+                <div className="flex justify-between">
+                  <span>Wholesale Supplier Cost (76%):</span>
+                  <span className="font-semibold text-gray-800">₦6,992 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Distributor Logistics Share (15%):</span>
+                  <span className="font-semibold text-gray-800">₦1,380 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Platform Fee (4%):</span>
+                  <span className="font-semibold text-emerald-700">₦280 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Manager Commission (3%):</span>
+                  <span className="font-semibold text-purple-700">₦210 / share</span>
+                </div>
+                <div className="flex justify-between text-amber-700">
+                  <span>Safety Buffer Reserve (4%):</span>
+                  <span className="font-bold">₦338 / share</span>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Platform Escrow Fee (4%):</span>
-              <span className="font-bold">₦2,720</span>
+
+            {/* Unit 3 Economics */}
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
+              <div className="font-bold text-gray-900 text-xs flex justify-between items-center">
+                <span>Oron Dried Crayfish (Large Bag)</span>
+                <span className="text-[11px] text-emerald-700 font-bold">Behind Sarah Dominion School</span>
+              </div>
+              <div className="text-[10px] text-gray-400">8 shares of Paint Bucket (~2kg) • Quoted Member Price: ₦7,500 / share</div>
+
+              <div className="pt-2 border-t border-gray-200 space-y-1 text-[11px] text-gray-600">
+                <div className="flex justify-between">
+                  <span>Wholesale Supplier Cost (76%):</span>
+                  <span className="font-semibold text-gray-800">₦5,700 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Distributor Logistics Share (15%):</span>
+                  <span className="font-semibold text-gray-800">₦1,125 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Platform Fee (4%):</span>
+                  <span className="font-semibold text-emerald-700">₦228 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Manager Commission (3%):</span>
+                  <span className="font-semibold text-purple-700">₦171 / share</span>
+                </div>
+                <div className="flex justify-between text-amber-700">
+                  <span>Safety Buffer Reserve (4%):</span>
+                  <span className="font-bold">₦276 / share</span>
+                </div>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Manager Commission (3%):</span>
-              <span className="font-bold">₦2,040</span>
-            </div>
-            <div className="flex justify-between text-emerald-800 font-black pt-1 border-t border-emerald-200">
-              <span>Surplus Credited to Members:</span>
-              <span>₦1,250 returned to wallets</span>
+
+            {/* Unit 4 Economics */}
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200 space-y-2">
+              <div className="font-bold text-gray-900 text-xs flex justify-between items-center">
+                <span>Direct Mill Pure Red Palm Oil (25L Gallon)</span>
+                <span className="text-[11px] text-emerald-700 font-bold">By Bakery, Piwoyi</span>
+              </div>
+              <div className="text-[10px] text-gray-400">5 shares of 5L • Quoted Member Price: ₦8,400 / share</div>
+
+              <div className="pt-2 border-t border-gray-200 space-y-1 text-[11px] text-gray-600">
+                <div className="flex justify-between">
+                  <span>Wholesale Supplier Cost (76%):</span>
+                  <span className="font-semibold text-gray-800">₦6,384 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Distributor Logistics Share (15%):</span>
+                  <span className="font-semibold text-gray-800">₦1,260 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Platform Fee (4%):</span>
+                  <span className="font-semibold text-emerald-700">₦255 / share</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Manager Commission (3%):</span>
+                  <span className="font-semibold text-purple-700">₦191 / share</span>
+                </div>
+                <div className="flex justify-between text-amber-700">
+                  <span>Safety Buffer Reserve (4%):</span>
+                  <span className="font-bold">₦310 / share</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

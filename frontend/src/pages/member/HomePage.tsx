@@ -389,44 +389,29 @@ export const HomePage: React.FC = () => {
               </div>
             ) : (
               <div className="py-3 space-y-4">
-                {/* Cost Breakdown Card (Rule 6 Exact Implementation) */}
-                <div className="bg-gray-50 p-3.5 rounded-2xl border border-gray-200/80 space-y-2 text-xs">
-                  <div className="font-bold text-gray-900 mb-2 flex items-center justify-between">
-                    <span>Transparent Cost Breakdown</span>
-                    <span className="text-[10px] text-gray-400 font-normal">Per {selectedUnit.share_size} share</span>
-                  </div>
-
-                  <div className="flex justify-between text-gray-600">
-                    <span>Goods cost (supplier wholesale)</span>
-                    <span className="font-semibold text-gray-800">{formatKobo(selectedUnit.goods_cost_share_kobo)}</span>
-                  </div>
-
-                  <div className="flex justify-between text-gray-600">
-                    <span>Share of distributor delivery</span>
-                    <span className="font-semibold text-gray-800">{formatKobo(selectedUnit.delivery_cost_share_kobo)}</span>
-                  </div>
-
-                  <div className="flex justify-between text-gray-600">
-                    <span>Platform fee (4%)</span>
-                    <span className="font-semibold text-gray-800">{formatKobo(selectedUnit.platform_fee_share_kobo)}</span>
-                  </div>
-
-                  <div className="flex justify-between text-gray-600">
-                    <span>Manager commission (3%)</span>
-                    <span className="font-semibold text-gray-800">{formatKobo(selectedUnit.manager_commission_share_kobo)}</span>
-                  </div>
-
-                  <div className="flex justify-between text-emerald-700 bg-emerald-100/60 p-1.5 rounded-lg border border-emerald-200">
+                {/* Member Purchase Summary Card */}
+                <div className="bg-emerald-50/50 p-4 rounded-2xl border border-emerald-100 space-y-3 text-xs">
+                  <div className="flex items-baseline justify-between">
                     <div>
-                      <span className="font-semibold">Safety buffer ({selectedUnit.buffer_percent}%)</span>
-                      <div className="text-[10px] text-emerald-600">Refundable surplus credited back to wallet</div>
+                      <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                        Share Price ({selectedUnit.share_size})
+                      </div>
+                      <div className="text-xl font-black text-emerald-900 mt-0.5">
+                        {formatKobo(selectedUnit.price_per_share_quoted_kobo)}
+                      </div>
                     </div>
-                    <span className="font-bold">{formatKobo(selectedUnit.buffer_share_kobo)}</span>
+                    <div className="text-right">
+                      <div className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-white px-2.5 py-1 rounded-full border border-emerald-200/80 shadow-2xs">
+                        <Sparkles size={11} className="text-emerald-600" />
+                        Save ~{formatKobo(selectedUnit.estimated_savings_kobo)}
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-1">vs ~{formatKobo(selectedUnit.estimated_market_price_kobo)} retail</div>
+                    </div>
                   </div>
 
-                  <div className="pt-2 border-t border-gray-200 flex justify-between items-baseline text-sm font-bold text-gray-900">
-                    <span>Total you pay</span>
-                    <span className="text-base text-emerald-800">{formatKobo(selectedUnit.price_per_share_quoted_kobo)}</span>
+                  <div className="pt-2.5 border-t border-emerald-200/60 flex items-center gap-2 text-[11px] text-emerald-800">
+                    <CheckCircle size={14} className="text-emerald-600 shrink-0" />
+                    <span><strong>100% Escrow Protection:</strong> Capital held securely until unit fills. Instant auto-refund if not completed.</span>
                   </div>
                 </div>
 
