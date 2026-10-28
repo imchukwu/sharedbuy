@@ -24,6 +24,7 @@ import (
 type PaymentService struct {
 	unitRepo          *repository.UnitRepository
 	userRepo          *repository.UserRepository
+	walletRepo        *repository.WalletRepository
 	paystackSecretKey string
 	paystackPublicKey string
 	httpClient        *http.Client
@@ -32,28 +33,30 @@ type PaymentService struct {
 }
 
 type PendingPayment struct {
-	Reference   string           `json:"reference"`
-	UnitID      string           `json:"unit_id"`
-	UserID      string           `json:"user_id"`
-	UserName    string           `json:"user_name"`
-	UserPhone   string           `json:"user_phone"`
-	UserEmail   string           `json:"user_email"`
-	SharesCount int              `json:"shares_count"`
-	AmountKobo  int64            `json:"amount_kobo"`
-	Status      string           `json:"status"` // INITIALIZED, SUCCESS, FAILED
-	CreatedAt   time.Time        `json:"created_at"`
-	FulfilledAt *time.Time       `json:"fulfilled_at,omitempty"`
+	Reference   string             `json:"reference"`
+	UnitID      string             `json:"unit_id"`
+	UserID      string             `json:"user_id"`
+	UserName    string             `json:"user_name"`
+	UserPhone   string             `json:"user_phone"`
+	UserEmail   string             `json:"user_email"`
+	SharesCount int                `json:"shares_count"`
+	AmountKobo  int64              `json:"amount_kobo"`
+	Status      string             `json:"status"` // INITIALIZED, SUCCESS, FAILED
+	CreatedAt   time.Time          `json:"created_at"`
+	FulfilledAt *time.Time         `json:"fulfilled_at,omitempty"`
 	Member      *domain.UnitMember `json:"member,omitempty"`
 }
 
 func NewPaymentService(
 	unitRepo *repository.UnitRepository,
 	userRepo *repository.UserRepository,
+	walletRepo *repository.WalletRepository,
 	paystackSecretKey, paystackPublicKey string,
 ) *PaymentService {
 	return &PaymentService{
 		unitRepo:          unitRepo,
 		userRepo:          userRepo,
+		walletRepo:        walletRepo,
 		paystackSecretKey: paystackSecretKey,
 		paystackPublicKey: paystackPublicKey,
 		httpClient:        &http.Client{Timeout: 15 * time.Second},
@@ -302,6 +305,11 @@ func (s *PaymentService) VerifyPayment(ctx context.Context, reference string) (*
 	s.mu.Unlock()
 
 	log.Printf("✅ Payment fulfilled: ref=%s, unit=%s, user=%s, code=%s", reference, pending.UnitID, pending.UserID, collectionCode)
+
+	// Award referral bonus if member was referred
+	if s.walletRepo != nil {
+		_, _ = s.walletRepo.AwardReferralBonus(ctx, pending.UserID, pending.UnitID)
+	}
 
 	return &VerifyPaymentResponse{
 		Status:         "SUCCESS",

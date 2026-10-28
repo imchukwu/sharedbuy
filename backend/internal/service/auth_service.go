@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -68,7 +69,7 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone string) (string, err
 	return code, nil
 }
 
-func (s *AuthService) VerifyOTP(ctx context.Context, phone, code, fullName, areaID string) (*AuthResult, error) {
+func (s *AuthService) VerifyOTP(ctx context.Context, phone, code, fullName, areaID, referralCode string) (*AuthResult, error) {
 	valid, err := s.userRepo.VerifyOTP(ctx, phone, code)
 	if err != nil {
 		return nil, fmt.Errorf("error verifying OTP: %w", err)
@@ -97,26 +98,42 @@ func (s *AuthService) VerifyOTP(ctx context.Context, phone, code, fullName, area
 			aID = &areaID
 		}
 
+		uID := "user-" + uuid.New().String()[:8]
+		var refBy *string
+		if referralCode != "" {
+			if refUser, err := s.userRepo.GetByReferralCode(ctx, referralCode); err == nil && refUser != nil {
+				refBy = &refUser.ID
+			}
+		}
+
 		newUser := &domain.User{
-			ID:       "user-" + uuid.New().String()[:8],
-			FullName: fullName,
-			Phone:    phone,
-			Role:     domain.RoleMember,
-			AreaID:   aID,
-			Status:   "ACTIVE",
-			Rating:   5.00,
+			ID:                uID,
+			FullName:          fullName,
+			Phone:             phone,
+			Role:              domain.RoleMember,
+			AreaID:            aID,
+			Status:            "ACTIVE",
+			Rating:            5.00,
+			WalletBalanceKobo: 0,
+			ReferralCode:      "REF-" + strings.ToUpper(uID[len(uID)-6:]),
+			ReferredBy:        refBy,
 		}
 		if err := s.userRepo.Create(ctx, newUser); err != nil {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 		user = newUser
-	} else if fullName != "" || areaID != "" {
-		// Update user info if provided
-		if fullName != "" {
-			user.FullName = fullName
+	} else {
+		if user.ReferralCode == "" {
+			user.ReferralCode = "REF-" + strings.ToUpper(user.ID[len(user.ID)-6:])
 		}
-		if areaID != "" {
-			user.AreaID = &areaID
+		if fullName != "" || areaID != "" {
+			// Update user info if provided
+			if fullName != "" {
+				user.FullName = fullName
+			}
+			if areaID != "" {
+				user.AreaID = &areaID
+			}
 		}
 		_ = s.userRepo.Update(ctx, user)
 	}

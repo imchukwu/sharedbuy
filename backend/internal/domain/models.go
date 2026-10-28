@@ -56,10 +56,27 @@ type User struct {
 	AdminSubrole *string    `json:"admin_subrole,omitempty"`
 	AreaID       *string    `json:"area_id,omitempty"`
 	AreaName     *string    `json:"area_name,omitempty"`
-	Status       string     `json:"status"` // ACTIVE, SUSPENDED
-	Rating       float64    `json:"rating"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	Status                string     `json:"status"` // ACTIVE, SUSPENDED
+	Rating                float64    `json:"rating"`
+	WalletBalanceKobo     int64      `json:"wallet_balance_kobo"`
+	ReferralCode          string     `json:"referral_code"`
+	ReferredBy            *string    `json:"referred_by,omitempty"`
+	ReferralEarningsKobo  int64      `json:"referral_earnings_kobo"`
+	ReferralsCount        int        `json:"referrals_count"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+}
+
+type WithdrawalRequest struct {
+	ID            string     `json:"id"`
+	UserID        string     `json:"user_id"`
+	AmountKobo    int64      `json:"amount_kobo"`
+	BankName      string     `json:"bank_name"`
+	AccountNumber string     `json:"account_number"`
+	AccountName   string     `json:"account_name"`
+	Status        string     `json:"status"` // PENDING, COMPLETED, REJECTED
+	CreatedAt     time.Time  `json:"created_at"`
+	CompletedAt   *time.Time `json:"completed_at,omitempty"`
 }
 
 type Area struct {

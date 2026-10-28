@@ -351,16 +351,20 @@ func getMockUsers() map[string]*domain.User {
 			UpdatedAt: time.Now(),
 		},
 		"mem-01": {
-			ID:        "mem-01",
-			FullName:  "Babagana Kyari",
-			Phone:     "+2348100000001",
-			Email:     &mem1Email,
-			Role:      domain.RoleMember,
-			AreaID:    &areaPiwoyi,
-			Status:    "ACTIVE",
-			Rating:    5.0,
-			CreatedAt: time.Now().Add(-30 * 24 * time.Hour),
-			UpdatedAt: time.Now(),
+			ID:                   "mem-01",
+			FullName:             "Babagana Kyari",
+			Phone:                "+2348100000001",
+			Email:                &mem1Email,
+			Role:                 domain.RoleMember,
+			AreaID:               &areaPiwoyi,
+			Status:               "ACTIVE",
+			Rating:               5.0,
+			WalletBalanceKobo:    1250000, // ₦12,500 initial demo balance
+			ReferralCode:         "REF-BABAGANA",
+			ReferralEarningsKobo: 40000,   // ₦400 (2 neighbors x ₦200)
+			ReferralsCount:       2,
+			CreatedAt:            time.Now().Add(-30 * 24 * time.Hour),
+			UpdatedAt:            time.Now(),
 		},
 	}
 

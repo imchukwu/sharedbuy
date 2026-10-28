@@ -26,10 +26,11 @@ type RequestOTPRequest struct {
 }
 
 type VerifyOTPRequest struct {
-	Phone    string `json:"phone"`
-	Code     string `json:"code"`
-	FullName string `json:"full_name"`
-	AreaID   string `json:"area_id"`
+	Phone        string `json:"phone"`
+	Code         string `json:"code"`
+	FullName     string `json:"full_name"`
+	AreaID       string `json:"area_id"`
+	ReferralCode string `json:"referral_code"`
 }
 
 type AdminLoginRequest struct {
@@ -75,7 +76,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.authService.VerifyOTP(r.Context(), req.Phone, req.Code, req.FullName, req.AreaID)
+	result, err := h.authService.VerifyOTP(r.Context(), req.Phone, req.Code, req.FullName, req.AreaID, req.ReferralCode)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
 		return

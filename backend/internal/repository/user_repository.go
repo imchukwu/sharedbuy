@@ -144,6 +144,47 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	return &u, nil
 }
 
+func (r *UserRepository) GetByReferralCode(ctx context.Context, code string) (*domain.User, error) {
+	if code == "" {
+		return nil, nil
+	}
+	if r.db == nil {
+		r.mu.RLock()
+		defer r.mu.RUnlock()
+		for _, u := range r.mockUsers {
+			if strings.EqualFold(u.ReferralCode, code) || strings.EqualFold(u.ID, code) {
+				userCopy := *u
+				return &userCopy, nil
+			}
+		}
+		return nil, nil
+	}
+
+	query := `
+		SELECT u.id, u.full_name, u.phone, u.email, u.password_hash, u.role, u.admin_subrole,
+		       u.area_id, a.name as area_name, u.status, u.rating, u.created_at, u.updated_at
+		FROM users u
+		LEFT JOIN areas a ON u.area_id = a.id
+		WHERE LOWER(u.id) = LOWER($1)
+	`
+	var u domain.User
+	var areaName sql.NullString
+	err := r.db.QueryRowContext(ctx, query, code).Scan(
+		&u.ID, &u.FullName, &u.Phone, &u.Email, &u.PasswordHash, &u.Role, &u.AdminSubrole,
+		&u.AreaID, &areaName, &u.Status, &u.Rating, &u.CreatedAt, &u.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error querying user by referral: %w", err)
+	}
+	if areaName.Valid {
+		u.AreaName = &areaName.String
+	}
+	return &u, nil
+}
+
 func (r *UserRepository) Create(ctx context.Context, u *domain.User) error {
 	if r.db == nil {
 		r.mu.Lock()

@@ -21,7 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { AuthModal } from '../../components/auth/AuthModal';
 
 export const HomePage: React.FC = () => {
-  const { user, token } = useAuth();
+  const { user, token, refreshProfile } = useAuth();
   const [units, setUnits] = useState<Unit[]>([]);
   const [areas, setAreas] = useState<Area[]>([]);
   const [selectedArea, setSelectedArea] = useState<string>('');
@@ -38,6 +38,15 @@ export const HomePage: React.FC = () => {
     reference: string;
   } | null>(null);
   const [codeCopied, setCodeCopied] = useState(false);
+
+  // Capture referral code from URL e.g. ?ref=REF-BABAGANA
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const ref = urlParams.get('ref');
+    if (ref) {
+      localStorage.setItem('sb_referral_code', ref);
+    }
+  }, []);
 
   const fetchUnits = () => {
     const params = new URLSearchParams();
@@ -146,15 +155,56 @@ export const HomePage: React.FC = () => {
     }
   };
 
+  const handlePayWithWallet = async () => {
+    if (!token || !selectedUnit) return;
+    setPaymentLoading(true);
+    try {
+      const res = await fetch('/api/wallet/pay-unit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          unit_id: selectedUnit.id,
+          shares_count: 1,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Failed to pay with wallet');
+        setPaymentLoading(false);
+        return;
+      }
+
+      setPaymentSuccessData({
+        collectionCode: data.collection_code,
+        sharingDate: data.sharing_date || selectedUnit.sharing_date,
+        amountKobo: selectedUnit.price_per_share_quoted_kobo,
+        reference: `wpay_${Date.now().toString().slice(-6)}`,
+      });
+      setJoinedSuccess(true);
+      fetchUnits();
+      await refreshProfile();
+    } catch (err: any) {
+      alert(err.message || 'Payment failed');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   const handleJoinClick = (unit: Unit) => {
     setSelectedUnit(unit);
   };
 
   const handleShareWhatsApp = (unit: Unit) => {
+    const refCode = user?.referral_code || user?.id || '';
+    const refParam = refCode ? `&ref=${refCode}` : '';
     const text = encodeURIComponent(
       `Join our group purchase for ${unit.product_name} (${unit.share_size}) in ${unit.area_city}! Price is ${formatKobo(
         unit.price_per_share_quoted_kobo
-      )} instead of market price ${formatKobo(unit.estimated_market_price_kobo)}. Check it out on SharedBuy: ${window.location.origin}/`
+      )} instead of retail price ${formatKobo(unit.estimated_market_price_kobo)}. Check it out on SharedBuy: ${window.location.origin}/?unit=${unit.id}${refParam}`
     );
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
@@ -603,39 +653,76 @@ export const HomePage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Join and Pay Button */}
-                <div>
-                  <button
-                    disabled={paymentLoading || selectedUnit.status !== 'OPEN'}
-                    onClick={() => {
-                      if (!user) {
-                        setAuthModalOpen(true);
-                      } else {
-                        handleJoinAndPay();
-                      }
-                    }}
-                    className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer ${
-                      paymentLoading
-                        ? 'bg-emerald-800 text-emerald-100 cursor-wait'
-                        : selectedUnit.status !== 'OPEN'
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-emerald-700 hover:bg-emerald-800 text-white'
-                    }`}
-                  >
-                    {paymentLoading ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        <span>Securing Your Share...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>{user ? `Join & Pay ${formatKobo(selectedUnit.price_per_share_quoted_kobo)}` : 'Sign In to Join Unit'}</span>
-                        <ArrowRight size={16} />
-                      </>
-                    )}
-                  </button>
-                  <p className="text-[11px] text-gray-400 text-center mt-2">
-                    Paystack secured checkout • Auto-refund if unit does not fill by deadline
+                {/* Join and Payment Options */}
+                <div className="space-y-2">
+                  {!user ? (
+                    <button
+                      onClick={() => setAuthModalOpen(true)}
+                      className="w-full py-3.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <span>Sign In to Join Unit</span>
+                      <ArrowRight size={16} />
+                    </button>
+                  ) : (
+                    <>
+                      {/* Option A: Pay with Wallet (if sufficient balance) */}
+                      {(user.wallet_balance_kobo || 0) >= selectedUnit.price_per_share_quoted_kobo ? (
+                        <button
+                          disabled={paymentLoading || selectedUnit.status !== 'OPEN'}
+                          onClick={handlePayWithWallet}
+                          className="w-full py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-md transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          {paymentLoading ? (
+                            <>
+                              <Loader2 size={15} className="animate-spin" />
+                              <span>Securing Your Share...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span>Pay with Wallet ({formatKobo(user.wallet_balance_kobo || 0)} available)</span>
+                              <ArrowRight size={14} />
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <div className="bg-amber-50/80 p-2.5 rounded-xl border border-amber-200/60 flex items-center justify-between text-xs text-amber-900">
+                          <div>
+                            <span className="font-semibold">Wallet:</span> {formatKobo(user.wallet_balance_kobo || 0)}
+                            <span className="text-gray-500 text-[11px] ml-1">(insufficient)</span>
+                          </div>
+                          <Link to="/wallet" className="font-bold text-emerald-800 underline text-[11px]">
+                            Top Up Wallet
+                          </Link>
+                        </div>
+                      )}
+
+                      {/* Option B: Pay with Card / Paystack */}
+                      <button
+                        disabled={paymentLoading || selectedUnit.status !== 'OPEN'}
+                        onClick={handleJoinAndPay}
+                        className={`w-full py-3 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer border ${
+                          (user.wallet_balance_kobo || 0) >= selectedUnit.price_per_share_quoted_kobo
+                            ? 'bg-white hover:bg-gray-50 text-emerald-900 border-emerald-300'
+                            : 'bg-emerald-700 hover:bg-emerald-800 text-white border-transparent shadow-md'
+                        }`}
+                      >
+                        {paymentLoading ? (
+                          <>
+                            <Loader2 size={15} className="animate-spin" />
+                            <span>Processing Checkout...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Pay with Card / Bank Transfer (Paystack)</span>
+                            <ArrowRight size={14} />
+                          </>
+                        )}
+                      </button>
+                    </>
+                  )}
+
+                  <p className="text-[11px] text-gray-400 text-center mt-1">
+                    100% Escrow protected • Auto-refund if unit does not fill by deadline
                   </p>
                 </div>
               </div>

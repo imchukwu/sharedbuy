@@ -12,8 +12,32 @@ export interface User {
   area_name?: string;
   status: 'ACTIVE' | 'SUSPENDED';
   rating: number;
+  wallet_balance_kobo?: number;
+  referral_code?: string;
+  referred_by?: string;
+  referral_earnings_kobo?: number;
+  referrals_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface WalletLedger {
+  id: string;
+  user_id: string;
+  type: 'CREDIT' | 'DEBIT';
+  amount_kobo: number;
+  balance_after_kobo: number;
+  reason: string;
+  ref_id: string;
+  created_at: string;
+}
+
+export interface WalletSummary {
+  balance_kobo: number;
+  referral_code: string;
+  referrals_count: number;
+  referral_earnings_kobo: number;
+  transactions: WalletLedger[];
 }
 
 export interface Area {

@@ -6,9 +6,10 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   requestOTP: (phone: string) => Promise<{ code?: string; message: string }>;
-  loginWithOTP: (phone: string, code: string, fullName?: string, areaId?: string) => Promise<void>;
+  loginWithOTP: (phone: string, code: string, fullName?: string, areaId?: string, referralCode?: string) => Promise<void>;
   loginAdmin: (email: string, password: string) => Promise<void>;
   loginAsDemoRole: (role: UserRole) => Promise<void>;
+  refreshProfile: () => Promise<void>;
   logout: () => void;
   isMember: boolean;
   isManager: boolean;
@@ -66,9 +67,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { code: data.debug_otp, message: data.message };
   };
 
-  const loginWithOTP = async (phone: string, code: string, fullName?: string, areaId?: string) => {
+  const refreshProfile = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const userData = await res.json();
+        setUser(userData);
+        localStorage.setItem('sharedbuy_user', JSON.stringify(userData));
+      }
+    } catch {}
+  };
+
+  const loginWithOTP = async (
+    phone: string,
+    code: string,
+    fullName?: string,
+    areaId?: string,
+    referralCode?: string
+  ) => {
     setIsLoading(true);
     try {
+      const refCode = referralCode || localStorage.getItem('sb_referral_code') || '';
       const res = await fetch('/api/auth/otp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -77,11 +99,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           code,
           full_name: fullName,
           area_id: areaId,
+          referral_code: refCode,
         }),
       });
       const data: AuthResponse = await res.json();
       if (!res.ok) throw new Error((data as any).error || 'Failed to verify OTP');
       saveAuth(data);
+      // Once signed in, remove stored referral code
+      localStorage.removeItem('sb_referral_code');
     } finally {
       setIsLoading(false);
     }
@@ -141,6 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithOTP,
         loginAdmin,
         loginAsDemoRole,
+        refreshProfile,
         logout,
         isMember,
         isManager,

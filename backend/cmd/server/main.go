@@ -39,16 +39,19 @@ func main() {
 	// 2. Repositories
 	userRepo := repository.NewUserRepository(sqlDB)
 	unitRepo := repository.NewUnitRepository(sqlDB)
+	walletRepo := repository.NewWalletRepository(sqlDB, userRepo)
 
 	// 3. Services
 	authService := service.NewAuthService(userRepo, cfg.JWTSecret)
-	paymentService := service.NewPaymentService(unitRepo, userRepo, cfg.PaystackSecretKey, cfg.PaystackPublicKey)
+	paymentService := service.NewPaymentService(unitRepo, userRepo, walletRepo, cfg.PaystackSecretKey, cfg.PaystackPublicKey)
+	walletService := service.NewWalletService(walletRepo, userRepo, unitRepo, cfg.PaystackSecretKey, cfg.PaystackPublicKey)
 
 	// 4. Handlers
 	authHandler := handler.NewAuthHandler(authService, userRepo)
 	metaHandler := handler.NewMetaHandler(unitRepo)
 	unitHandler := handler.NewUnitHandler(unitRepo)
 	paymentHandler := handler.NewPaymentHandler(paymentService)
+	walletHandler := handler.NewWalletHandler(walletService)
 
 	// 5. Router Setup
 	r := chi.NewRouter()
@@ -92,6 +95,16 @@ func main() {
 				authed.Post("/initialize", paymentHandler.InitializePayment)
 			})
 			pay.Get("/verify/{reference}", paymentHandler.VerifyPayment)
+		})
+
+		// Member Wallet & Referrals (Protected)
+		api.Route("/wallet", func(w chi.Router) {
+			w.Use(middleware.RequireAuth)
+			w.Get("/", walletHandler.GetSummary)
+			w.Post("/topup/initialize", walletHandler.InitializeTopUp)
+			w.Get("/topup/verify/{reference}", walletHandler.VerifyTopUp)
+			w.Post("/withdraw", walletHandler.Withdraw)
+			w.Post("/pay-unit", walletHandler.PayUnitWithWallet)
 		})
 
 		// Paystack Webhook

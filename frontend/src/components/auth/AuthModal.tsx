@@ -15,8 +15,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultTa
   // Member state
   const [phone, setPhone] = useState('+2348100000001');
   const [code, setCode] = useState('');
-  const [fullName] = useState('');
-  const [areaId] = useState('area-maiduguri');
+  const [fullName, setFullName] = useState('');
+  const [areaId] = useState('area-piwoyi-abuja');
+  const [referralCode, setReferralCode] = useState(() => localStorage.getItem('sb_referral_code') || '');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [otpHint, setOtpHint] = useState<string | null>(null);
 
@@ -51,7 +52,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultTa
     setError(null);
     setLoading(true);
     try {
-      await loginWithOTP(phone, code, fullName, areaId);
+      await loginWithOTP(phone, code, fullName, areaId, referralCode);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Verification failed');
@@ -132,6 +133,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, defaultTa
                   />
                 </div>
                 <p className="text-[11px] text-gray-500 mt-1">We will send a 6-digit code via SMS / WhatsApp.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Full Name <span className="text-gray-400 font-normal">(Optional for first-time sign-up)</span>
+                </label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="e.g. Babagana Kyari"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Referral Code <span className="text-gray-400 font-normal">(Optional - get ₦200 neighbor bonus)</span>
+                </label>
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. REF-BABAGANA"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-600 uppercase"
+                />
               </div>
 
               {/* Quick Preset Buttons */}
